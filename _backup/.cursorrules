@@ -1,0 +1,42 @@
+// This is a rule file for Cursor Agent
+const rules = `
+# 智能排班考勤小助手 - 开发规则
+
+## 技术栈约束
+- 必须使用 Next.js 15 App Router，禁止使用 Pages Router
+- 必须使用 TypeScript 严格模式，禁止使用 any 类型
+- 样式必须使用 Tailwind CSS，禁止写自定义CSS文件
+- UI组件必须使用 ShadCN UI，禁止使用其他UI库
+- 数据库必须使用 Prisma + SQLite，禁止直接操作文件
+
+## 架构约束
+- 前端页面放在 src/app/ 下
+- API接口放在 src/app/api/ 下
+- 组件放在 src/components/ 下，使用 PascalCase 命名
+- 工具函数放在 src/lib/ 下，使用 camelCase 命名
+- 禁止UI层直接操作数据库，必须通过API层
+- 禁止跨层依赖，必须遵循 UI -> API -> Service -> Repo 的分层
+
+## 编码规范
+- 所有组件必须是函数式组件，禁止Class组件
+- 文件命名使用 kebab-case 或者 PascalCase
+- 必须添加必要的注释，关键函数要说明功能
+- 禁止提交包含 console.log 的代码
+- 所有字符串必须使用中文，面向国内用户
+
+## 验证规则
+- 每次代码修改后，必须运行:
+  1. npx tsc --noEmit (类型检查)
+  2. npm run lint (代码检查)
+  3. npm run build (构建检查)
+- 所有功能必须有基础的错误处理
+- 所有用户输入必须有验证
+
+## 禁止事项
+- 禁止修改 .env.example 以外的环境变量文件
+- 禁止删除或修改 .cursorrules 和 AGENTS.md
+- 禁止修改 prisma/schema.prisma 而不运行 migrations
+- 禁止在生产代码中硬编码API Key
+`;
+
+module.exports = rules;
