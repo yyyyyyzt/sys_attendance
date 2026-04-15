@@ -1,0 +1,95 @@
+// Prisma schema - 智能排班考勤小助手（SQLite）
+// 模型字段与 database.md 对齐，并补全关联以满足 Prisma 关系完整性
+
+generator client {
+  provider = "prisma-client"
+  output   = "../src/generated/prisma"
+}
+
+datasource db {
+  provider = "sqlite"
+}
+
+model Employee {
+  id        String   @id @default(uuid())
+  name      String // 员工姓名
+  teamId    String // 所属班组ID
+  position  String // 岗位
+  skills    Json @default("[]") // 技能标签（JSON 字符串数组，SQLite 不支持 String[]）
+  status    String // active/inactive
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+
+  team              Team               @relation(fields: [teamId], references: [id])
+  schedules         Schedule[]
+  leaveRequests     LeaveRequest[]
+  attendanceRecords AttendanceRecord[]
+}
+
+model Team {
+  id          String   @id @default(uuid())
+  name        String // 班组名称
+  description String?
+  createdAt   DateTime @default(now())
+
+  employees Employee[]
+  shifts    Shift[]
+  schedules Schedule[]
+}
+
+model Shift {
+  id            String   @id @default(uuid())
+  name          String // 班次名称: 早班/中班/晚班等
+  startTime     String // 开始时间 HH:mm
+  endTime       String // 结束时间 HH:mm
+  isCrossDay    Boolean  @default(false) // 是否跨天
+  requiredCount Int // 该班次需要的最少人数
+  teamId        String // 适用班组
+  createdAt     DateTime @default(now())
+
+  team      Team       @relation(fields: [teamId], references: [id])
+  schedules Schedule[]
+}
+
+model Schedule {
+  id         String   @id @default(uuid())
+  employeeId String // 员工ID
+  teamId     String // 班组ID
+  shiftId    String // 班次ID
+  shiftDate  String // 日期 YYYY-MM-DD
+  status     String // scheduled/leave/cancelled/completed
+  note       String?
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+  team     Team     @relation(fields: [teamId], references: [id])
+  shift    Shift    @relation(fields: [shiftId], references: [id])
+}
+
+model LeaveRequest {
+  id         String   @id @default(uuid())
+  employeeId String // 申请人
+  startDate  String // 开始日期
+  endDate    String // 结束日期
+  shiftIds   Json @default("[]") // 涉及的班次 ID（JSON 字符串数组）
+  reason     String // 请假原因
+  status     String // pending/approved/rejected
+  approverId String? // 审批人
+  createdAt  DateTime @default(now())
+  updatedAt  DateTime @updatedAt
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
+
+model AttendanceRecord {
+  id         String   @id @default(uuid())
+  employeeId String // 员工
+  date       String // 日期
+  checkIn    String? // 签到时间
+  checkOut   String? // 签退时间
+  status     String // normal/late/early/absent
+  createdAt  DateTime @default(now())
+
+  employee Employee @relation(fields: [employeeId], references: [id])
+}
