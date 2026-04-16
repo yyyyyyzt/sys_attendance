@@ -3,6 +3,7 @@ import { openai, MODEL, isConfigured } from "./openai-client"
 import { NL_TOOLS, SYSTEM_PROMPT } from "./tools"
 import { executeFunction } from "./executor"
 import { parseIntent } from "./parse-intent"
+import { formatKnowledgeForPrompt } from "./knowledge"
 
 export interface ChatAction {
   name: string
@@ -29,7 +30,10 @@ export async function chat(
   }
 
   const today = new Date().toISOString().slice(0, 10)
-  const system = SYSTEM_PROMPT.replace("{{today}}", today)
+  const knowledgeBlock = formatKnowledgeForPrompt()
+  const system = SYSTEM_PROMPT
+    .replace("{{today}}", today)
+    .replace("{{knowledge}}", knowledgeBlock)
 
   const messages: OpenAI.ChatCompletionMessageParam[] = [
     { role: "system", content: system },
