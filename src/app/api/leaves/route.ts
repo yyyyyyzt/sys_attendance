@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { leaveService } from "@/lib/services/leave"
 import { createLeaveSchema, leaveQuerySchema } from "@/lib/validation/leave"
 
@@ -19,8 +20,8 @@ export async function GET(request: Request) {
     }
     const leaves = await leaveService.list(query.data)
     return NextResponse.json(leaves)
-  } catch {
-    return NextResponse.json({ error: "获取请假列表失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/leaves", err, "获取请假列表失败", 500)
   }
 }
 
@@ -38,6 +39,6 @@ export async function POST(request: Request) {
     return NextResponse.json(leave, { status: 201 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "创建请假申请失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("POST /api/leaves", err, msg, 400)
   }
 }

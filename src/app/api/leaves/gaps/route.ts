@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { leaveService } from "@/lib/services/leave"
 
 export async function GET(request: Request) {
@@ -14,7 +15,7 @@ export async function GET(request: Request) {
 
     const gaps = await leaveService.detectGaps(teamId, from, to)
     return NextResponse.json(gaps)
-  } catch {
-    return NextResponse.json({ error: "缺口检测失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/leaves/gaps", err, "缺口检测失败", 500)
   }
 }

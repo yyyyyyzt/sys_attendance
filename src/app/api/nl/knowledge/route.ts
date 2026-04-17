@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { readKnowledge, writeKnowledge } from "@/lib/nl/knowledge"
 
 export async function GET() {
@@ -7,7 +8,7 @@ export async function GET() {
     return NextResponse.json(knowledge)
   } catch (err) {
     const message = err instanceof Error ? err.message : "读取知识库失败"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiRouteError("GET /api/nl/knowledge", err, message, 500)
   }
 }
 
@@ -18,6 +19,6 @@ export async function PUT(request: Request) {
     return NextResponse.json(updated)
   } catch (err) {
     const message = err instanceof Error ? err.message : "保存知识库失败"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiRouteError("PUT /api/nl/knowledge", err, message, 500)
   }
 }

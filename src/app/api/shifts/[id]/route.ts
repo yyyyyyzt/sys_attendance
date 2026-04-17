@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { shiftService } from "@/lib/services/shift"
 import { updateShiftSchema } from "@/lib/validation/shift"
 
@@ -10,8 +11,8 @@ export async function GET(_req: Request, { params }: Params) {
     const shift = await shiftService.getById(id)
     if (!shift) return NextResponse.json({ error: "班次不存在" }, { status: 404 })
     return NextResponse.json(shift)
-  } catch {
-    return NextResponse.json({ error: "获取班次失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/shifts/[id]", err, "获取班次失败", 500)
   }
 }
 
@@ -30,7 +31,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json(shift)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "更新班次失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("PATCH /api/shifts/[id]", err, msg, 400)
   }
 }
 
@@ -39,7 +40,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params
     await shiftService.delete(id)
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "删除班次失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("DELETE /api/shifts/[id]", err, "删除班次失败", 500)
   }
 }

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { scheduleService } from "@/lib/services/schedule"
 import { scheduleQuerySchema } from "@/lib/validation/schedule"
 import { exportSchedulesToXlsx } from "@/lib/scheduling/excel"
@@ -43,7 +44,7 @@ export async function GET(request: Request) {
         "Content-Disposition": `attachment; filename="schedules.xlsx"`,
       },
     })
-  } catch {
-    return NextResponse.json({ error: "导出失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/export/schedules", err, "导出失败", 500)
   }
 }

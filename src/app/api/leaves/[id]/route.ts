@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { leaveService } from "@/lib/services/leave"
 import { approveLeaveSchema } from "@/lib/validation/leave"
 
@@ -10,8 +11,8 @@ export async function GET(_req: Request, { params }: Params) {
     const leave = await leaveService.getById(id)
     if (!leave) return NextResponse.json({ error: "请假记录不存在" }, { status: 404 })
     return NextResponse.json(leave)
-  } catch {
-    return NextResponse.json({ error: "获取请假记录失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/leaves/[id]", err, "获取请假记录失败", 500)
   }
 }
 
@@ -30,7 +31,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json(leave)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "审批失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("PATCH /api/leaves/[id]", err, msg, 400)
   }
 }
 
@@ -39,7 +40,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params
     await leaveService.delete(id)
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "删除请假记录失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("DELETE /api/leaves/[id]", err, "删除请假记录失败", 500)
   }
 }

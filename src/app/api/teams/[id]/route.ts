@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { teamService } from "@/lib/services/team"
 import { updateTeamSchema } from "@/lib/validation/team"
 
@@ -10,8 +11,8 @@ export async function GET(_req: Request, { params }: Params) {
     const team = await teamService.getById(id)
     if (!team) return NextResponse.json({ error: "班组不存在" }, { status: 404 })
     return NextResponse.json(team)
-  } catch {
-    return NextResponse.json({ error: "获取班组失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/teams/[id]", err, "获取班组失败", 500)
   }
 }
 
@@ -28,8 +29,8 @@ export async function PATCH(request: Request, { params }: Params) {
     }
     const team = await teamService.update(id, parsed.data)
     return NextResponse.json(team)
-  } catch {
-    return NextResponse.json({ error: "更新班组失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("PATCH /api/teams/[id]", err, "更新班组失败", 500)
   }
 }
 
@@ -40,6 +41,6 @@ export async function DELETE(_req: Request, { params }: Params) {
     return NextResponse.json({ success: true })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "删除班组失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("DELETE /api/teams/[id]", err, msg, 400)
   }
 }

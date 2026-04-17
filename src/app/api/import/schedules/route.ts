@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { parseScheduleImport } from "@/lib/scheduling/excel"
 import { prisma } from "@/lib/db"
 import { scheduleRepo } from "@/lib/repos/schedule"
@@ -78,7 +79,7 @@ export async function POST(request: Request) {
       count: result.count,
       errors: allErrors.length > 0 ? allErrors : undefined,
     })
-  } catch {
-    return NextResponse.json({ error: "导入失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("POST /api/import/schedules", err, "导入失败", 500)
   }
 }

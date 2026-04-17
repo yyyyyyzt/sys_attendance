@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { employeeService } from "@/lib/services/employee"
 import { createEmployeeSchema } from "@/lib/validation/employee"
 
@@ -8,8 +9,8 @@ export async function GET(request: Request) {
     const teamId = searchParams.get("teamId") ?? undefined
     const employees = await employeeService.list(teamId)
     return NextResponse.json(employees)
-  } catch {
-    return NextResponse.json({ error: "获取员工列表失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/employees", err, "获取员工列表失败", 500)
   }
 }
 
@@ -27,6 +28,6 @@ export async function POST(request: Request) {
     return NextResponse.json(employee, { status: 201 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "创建员工失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("POST /api/employees", err, msg, 400)
   }
 }

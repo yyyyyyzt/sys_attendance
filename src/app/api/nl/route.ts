@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { chat } from "@/lib/nl/chat"
 import { isConfigured } from "@/lib/nl/openai-client"
 
@@ -19,7 +20,7 @@ export async function POST(request: Request) {
     })
   } catch (err) {
     const message = err instanceof Error ? err.message : "NL 服务异常"
-    return NextResponse.json({ error: message }, { status: 500 })
+    return apiRouteError("POST /api/nl", err, message, 500)
   }
 }
 

@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { attendanceService } from "@/lib/services/attendance"
 import { monthlyStatsQuerySchema } from "@/lib/validation/attendance"
 
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
     }
     const stats = await attendanceService.monthlyStats(query.data.month, query.data.teamId)
     return NextResponse.json(stats)
-  } catch {
-    return NextResponse.json({ error: "获取月度统计失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/attendance/stats", err, "获取月度统计失败", 500)
   }
 }

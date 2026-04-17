@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { scheduleService } from "@/lib/services/schedule"
 import { createScheduleSchema, scheduleQuerySchema } from "@/lib/validation/schedule"
 
@@ -19,8 +20,8 @@ export async function GET(request: Request) {
     }
     const schedules = await scheduleService.list(query.data)
     return NextResponse.json(schedules)
-  } catch {
-    return NextResponse.json({ error: "获取排班列表失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/schedules", err, "获取排班列表失败", 500)
   }
 }
 
@@ -38,6 +39,6 @@ export async function POST(request: Request) {
     return NextResponse.json(schedule, { status: 201 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "创建排班失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("POST /api/schedules", err, msg, 400)
   }
 }

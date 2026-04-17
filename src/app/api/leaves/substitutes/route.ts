@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { leaveService } from "@/lib/services/leave"
 
 export async function GET(request: Request) {
@@ -17,7 +18,7 @@ export async function GET(request: Request) {
 
     const candidates = await leaveService.recommendSubstitutes(teamId, shiftDate, shiftId)
     return NextResponse.json(candidates)
-  } catch {
-    return NextResponse.json({ error: "替补推荐失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/leaves/substitutes", err, "替补推荐失败", 500)
   }
 }

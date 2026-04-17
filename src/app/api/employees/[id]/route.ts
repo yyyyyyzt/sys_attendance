@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { employeeService } from "@/lib/services/employee"
 import { updateEmployeeSchema } from "@/lib/validation/employee"
 
@@ -10,8 +11,8 @@ export async function GET(_req: Request, { params }: Params) {
     const employee = await employeeService.getById(id)
     if (!employee) return NextResponse.json({ error: "员工不存在" }, { status: 404 })
     return NextResponse.json(employee)
-  } catch {
-    return NextResponse.json({ error: "获取员工失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/employees/[id]", err, "获取员工失败", 500)
   }
 }
 
@@ -30,7 +31,7 @@ export async function PATCH(request: Request, { params }: Params) {
     return NextResponse.json(employee)
   } catch (err) {
     const msg = err instanceof Error ? err.message : "更新员工失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("PATCH /api/employees/[id]", err, msg, 400)
   }
 }
 
@@ -39,7 +40,7 @@ export async function DELETE(_req: Request, { params }: Params) {
     const { id } = await params
     await employeeService.delete(id)
     return NextResponse.json({ success: true })
-  } catch {
-    return NextResponse.json({ error: "删除员工失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("DELETE /api/employees/[id]", err, "删除员工失败", 500)
   }
 }

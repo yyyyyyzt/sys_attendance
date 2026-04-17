@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { shiftService } from "@/lib/services/shift"
 import { createShiftSchema } from "@/lib/validation/shift"
 
@@ -8,8 +9,8 @@ export async function GET(request: Request) {
     const teamId = searchParams.get("teamId") ?? undefined
     const shifts = await shiftService.list(teamId)
     return NextResponse.json(shifts)
-  } catch {
-    return NextResponse.json({ error: "获取班次列表失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/shifts", err, "获取班次列表失败", 500)
   }
 }
 
@@ -27,6 +28,6 @@ export async function POST(request: Request) {
     return NextResponse.json(shift, { status: 201 })
   } catch (err) {
     const msg = err instanceof Error ? err.message : "创建班次失败"
-    return NextResponse.json({ error: msg }, { status: 400 })
+    return apiRouteError("POST /api/shifts", err, msg, 400)
   }
 }

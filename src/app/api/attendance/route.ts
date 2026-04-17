@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { attendanceService } from "@/lib/services/attendance"
 import { createAttendanceSchema, attendanceQuerySchema } from "@/lib/validation/attendance"
 
@@ -20,8 +21,8 @@ export async function GET(request: Request) {
     }
     const records = await attendanceService.list(query.data)
     return NextResponse.json(records)
-  } catch {
-    return NextResponse.json({ error: "获取出勤记录失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/attendance", err, "获取出勤记录失败", 500)
   }
 }
 
@@ -37,7 +38,7 @@ export async function POST(request: Request) {
     }
     const record = await attendanceService.create(parsed.data)
     return NextResponse.json(record, { status: 201 })
-  } catch {
-    return NextResponse.json({ error: "创建出勤记录失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("POST /api/attendance", err, "创建出勤记录失败", 500)
   }
 }

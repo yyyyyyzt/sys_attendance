@@ -1,4 +1,5 @@
 import { NextResponse } from "next/server"
+import { apiRouteError } from "@/lib/api-route-error"
 import { attendanceService } from "@/lib/services/attendance"
 import { alertConfigSchema } from "@/lib/validation/attendance"
 
@@ -22,7 +23,7 @@ export async function GET(request: Request) {
     const teamId = searchParams.get("teamId") ?? undefined
     const alerts = await attendanceService.detectAlerts(month, config.data, teamId)
     return NextResponse.json(alerts)
-  } catch {
-    return NextResponse.json({ error: "异常检测失败" }, { status: 500 })
+  } catch (err) {
+    return apiRouteError("GET /api/attendance/alerts", err, "异常检测失败", 500)
   }
 }
