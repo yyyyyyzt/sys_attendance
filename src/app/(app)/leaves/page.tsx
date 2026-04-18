@@ -16,7 +16,7 @@ import {
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs"
-import { Plus, Check, X, Trash2, AlertTriangle, UserPlus } from "lucide-react"
+import { Plus, Check, X, Trash2, AlertTriangle, UserPlus, IdCard } from "lucide-react"
 import { toast } from "sonner"
 
 interface Employee { id: string; name: string; position: string; teamId: string }
@@ -62,6 +62,33 @@ interface SubstituteCandidate {
   skills: string[]
 }
 
+interface LeavePanelItem {
+  leaveType: string
+  usedHoursThisYear: number
+  usedDaysThisYear: number
+  maxDays: number | null
+  remainingDays: number | null
+}
+interface LeavePanelHistory {
+  leaveType: string
+  startDate: string
+  endDate: string
+  hours: number
+  status: string
+  reason: string
+}
+
+const LEAVE_TYPE_LABELS: Record<string, string> = {
+  ANNUAL: "年假",
+  CHILD_CARE: "育儿假",
+  SICK: "病假",
+  PERSONAL: "事假",
+  MARRIAGE: "婚假",
+  NURSING: "护理假",
+  PATERNITY: "陪产假",
+  BEREAVEMENT: "丧假",
+}
+
 const statusConfig: Record<string, { label: string; variant: "default" | "secondary" | "destructive" | "outline" }> = {
   pending: { label: "待审批", variant: "secondary" },
   approved: { label: "已通过", variant: "default" },
@@ -95,6 +122,18 @@ export default function LeavesPage() {
   const [subsOpen, setSubsOpen] = useState(false)
   const [subsTarget, setSubsTarget] = useState<GapInfo | null>(null)
   const [substitutes, setSubstitutes] = useState<SubstituteCandidate[]>([])
+
+  const [panelOpen, setPanelOpen] = useState(false)
+  const [panelLoading, setPanelLoading] = useState(false)
+  const [panelEmployeeId, setPanelEmployeeId] = useState("")
+  const [panelYear, setPanelYear] = useState<number>(new Date().getFullYear())
+  const [panelData, setPanelData] = useState<{
+    employee: { id: string; name: string; teamId: string } | null
+    usage: LeavePanelItem[]
+    history: LeavePanelHistory[]
+  }>({ employee: null, usage: [], history: [] })
+
+  const pendingCount = leaves.filter((l) => l.status === "pending").length
 
   const fetchLeaves = useCallback(async () => {
     setLoading(true)
@@ -199,6 +238,31 @@ export default function LeavesPage() {
     }
   }
 
+  async function openLeavePanel(employeeId: string) {
+    if (!employeeId) return
+    setPanelEmployeeId(employeeId)
+    setPanelOpen(true)
+    await loadLeavePanel(employeeId, panelYear)
+  }
+
+  async function loadLeavePanel(employeeId: string, year: number) {
+    setPanelLoading(true)
+    try {
+      const res = await fetch(`/api/employees/${employeeId}/leave-panel?year=${year}`)
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}))
+        toast.error(err.error ?? "加载假期面板失败")
+        return
+      }
+      const data = await res.json()
+      setPanelData({ employee: data.employee, usage: data.usage, history: data.history })
+    } catch {
+      toast.error("加载假期面板失败")
+    } finally {
+      setPanelLoading(false)
+    }
+  }
+
   async function openSubstitutes(gap: GapInfo) {
     setSubsTarget(gap)
     setSubsOpen(true)
@@ -214,11 +278,34 @@ export default function LeavesPage() {
   return (
     <div className="space-y-4">
       <div className="flex items-center justify-between">
-        <h2 className="text-2xl font-bold tracking-tight">请假管理</h2>
-        <Button onClick={() => setApplyOpen(true)} size="sm">
-          <Plus className="mr-1 h-4 w-4" />
-          提交请假
-        </Button>
+        <div className="flex items-center gap-2">
+          <h2 className="text-2xl font-bold tracking-tight">请假管理</h2>
+          {pendingCount > 0 && (
+            <Badge variant="secondary" className="gap-1">
+              <AlertTriangle className="h-3 w-3 text-amber-500" />
+              待审批 {pendingCount}
+            </Badge>
+          )}
+        </div>
+        <div className="flex items-center gap-2">
+          <Select
+            value={panelEmployeeId || undefined}
+            onValueChange={(v) => openLeavePanel(v ?? "")}
+          >
+            <SelectTrigger className="h-9 w-40">
+              <SelectValue placeholder="查员工假期面板" />
+            </SelectTrigger>
+            <SelectContent>
+              {employees.map((e) => (
+                <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          <Button onClick={() => setApplyOpen(true)} size="sm">
+            <Plus className="mr-1 h-4 w-4" />
+            提交请假
+          </Button>
+        </div>
       </div>
 
       <Tabs defaultValue="list">
@@ -272,7 +359,17 @@ export default function LeavesPage() {
                       const sc = statusConfig[l.status] ?? statusConfig.pending
                       return (
                         <TableRow key={l.id}>
-                          <TableCell className="font-medium">{l.employee.name}</TableCell>
+                          <TableCell className="font-medium">
+                            <button
+                              type="button"
+                              className="inline-flex items-center gap-1 hover:underline"
+                              onClick={() => openLeavePanel(l.employeeId)}
+                              title="查看员工假期面板"
+                            >
+                              {l.employee.name}
+                              <IdCard className="h-3 w-3 text-zinc-400" />
+                            </button>
+                          </TableCell>
                           <TableCell className="text-xs text-zinc-500">{l.leaveType}</TableCell>
                           <TableCell className="text-center text-sm">{l.hours}</TableCell>
                           <TableCell>{l.startDate} ~ {l.endDate}</TableCell>
@@ -451,6 +548,121 @@ export default function LeavesPage() {
             >
               提交申请
             </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* ========== 员工假期面板 Dialog ========== */}
+      <Dialog open={panelOpen} onOpenChange={(v) => { setPanelOpen(v); if (!v) setPanelEmployeeId("") }}>
+        <DialogContent className="max-w-2xl">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <IdCard className="h-4 w-4" />
+              员工假期面板
+              {panelData.employee && (
+                <Badge variant="outline">{panelData.employee.name}</Badge>
+              )}
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="flex items-center gap-2 text-sm">
+              <Label>年份</Label>
+              <Input
+                type="number"
+                min={2000}
+                max={2100}
+                value={panelYear}
+                onChange={(e) => {
+                  const y = Number(e.target.value)
+                  setPanelYear(y)
+                  if (panelEmployeeId && Number.isInteger(y)) loadLeavePanel(panelEmployeeId, y)
+                }}
+                className="w-24"
+              />
+              <span className="text-xs text-zinc-400">
+                {panelLoading ? "加载中…" : panelData.employee ? "" : "请先选择员工"}
+              </span>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-zinc-700">假期额度</h3>
+              <Table>
+                <TableHeader>
+                  <TableRow>
+                    <TableHead>类型</TableHead>
+                    <TableHead className="text-center">年度上限</TableHead>
+                    <TableHead className="text-center">今年已用</TableHead>
+                    <TableHead className="text-center">剩余</TableHead>
+                  </TableRow>
+                </TableHeader>
+                <TableBody>
+                  {panelData.usage.length === 0 ? (
+                    <TableRow>
+                      <TableCell colSpan={4} className="py-4 text-center text-sm text-zinc-400">
+                        暂无数据
+                      </TableCell>
+                    </TableRow>
+                  ) : (
+                    panelData.usage.map((u) => (
+                      <TableRow key={u.leaveType}>
+                        <TableCell>{LEAVE_TYPE_LABELS[u.leaveType] ?? u.leaveType}</TableCell>
+                        <TableCell className="text-center text-zinc-500">
+                          {u.maxDays == null ? "无明确上限" : `${u.maxDays} 天`}
+                        </TableCell>
+                        <TableCell className="text-center">{u.usedDaysThisYear} 天</TableCell>
+                        <TableCell className="text-center">
+                          {u.remainingDays == null ? (
+                            <span className="text-zinc-400">—</span>
+                          ) : (
+                            <Badge variant={u.remainingDays > 0 ? "default" : "destructive"}>
+                              {u.remainingDays} 天
+                            </Badge>
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    ))
+                  )}
+                </TableBody>
+              </Table>
+            </div>
+
+            <div>
+              <h3 className="mb-2 text-sm font-medium text-zinc-700">今年请假历史</h3>
+              {panelData.history.length === 0 ? (
+                <p className="py-4 text-center text-sm text-zinc-400">暂无请假记录</p>
+              ) : (
+                <Table>
+                  <TableHeader>
+                    <TableRow>
+                      <TableHead>日期</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead className="text-center">小时</TableHead>
+                      <TableHead className="text-center">状态</TableHead>
+                      <TableHead>原因</TableHead>
+                    </TableRow>
+                  </TableHeader>
+                  <TableBody>
+                    {panelData.history.map((h, i) => {
+                      const sc = statusConfig[h.status] ?? statusConfig.pending
+                      return (
+                        <TableRow key={i}>
+                          <TableCell>{h.startDate} ~ {h.endDate}</TableCell>
+                          <TableCell>{LEAVE_TYPE_LABELS[h.leaveType] ?? h.leaveType}</TableCell>
+                          <TableCell className="text-center">{h.hours}</TableCell>
+                          <TableCell className="text-center">
+                            <Badge variant={sc.variant}>{sc.label}</Badge>
+                          </TableCell>
+                          <TableCell className="max-w-[200px] truncate text-zinc-500">{h.reason}</TableCell>
+                        </TableRow>
+                      )
+                    })}
+                  </TableBody>
+                </Table>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setPanelOpen(false)}>关闭</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
