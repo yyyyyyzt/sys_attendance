@@ -30,12 +30,15 @@ export function isCapped(t: LeaveType): t is CappedLeaveType {
 
 /**
  * 消耗型假期的年度默认额度（单位：小时）。
- * 生产接入前作为演示/兜底值，真实数据请通过 HR 导入接口覆盖。
+ *
+ * 策略变更：默认额度全部为 0，管理员需在员工假期管理页里手动分配。
+ * 这样更贴近实际——年假可能按工龄不同、婚假只有新婚者有、
+ * 产假/陪产假仅适用于相应员工等。
  */
 export const DEFAULT_CONSUMPTIVE_HOURS: Record<ConsumptiveLeaveType, number> = {
-  ANNUAL: 40, // 年假 5 天
-  MARRIAGE: 80, // 婚假 10 天
-  CHILD_CARE: 80, // 育儿假 10 天
+  ANNUAL: 0,
+  MARRIAGE: 0,
+  CHILD_CARE: 0,
 }
 
 export interface EligibilityOk {
@@ -122,10 +125,16 @@ export const leavePolicyService = {
       if (isConsumptive(t)) {
         const effectiveTotal = balance?.totalHours ?? DEFAULT_CONSUMPTIVE_HOURS[t as ConsumptiveLeaveType]
         maxHours = effectiveTotal
-        remainingHours = balance ? balance.remainingHours : effectiveTotal - usedHours
-      } else if (policy?.maxDays != null) {
-        maxHours = policy.maxDays * HOURS_PER_DAY
-        remainingHours = Math.max(0, maxHours - usedHours)
+        remainingHours = balance ? balance.remainingHours : Math.max(0, effectiveTotal - usedHours)
+      } else {
+        if (balance && balance.totalHours > 0) {
+          maxHours = balance.totalHours
+        } else if (policy?.maxDays != null) {
+          maxHours = policy.maxDays * HOURS_PER_DAY
+        }
+        if (maxHours != null) {
+          remainingHours = Math.max(0, maxHours - usedHours)
+        }
       }
 
       results.push({
@@ -179,15 +188,24 @@ export const leavePolicyService = {
     }
 
     if (isCapped(params.leaveType)) {
+      const account = await leaveBalanceRepo.findOne(params.employeeId, year, params.leaveType)
       const policy = await leavePolicyRepo.findByType(params.leaveType)
-      if (policy?.maxDays != null) {
+
+      // 员工级覆盖优先于 policy 全局默认；两者都没有则视为无上限
+      let maxHours: number | null = null
+      if (account && account.totalHours > 0) {
+        maxHours = account.totalHours
+      } else if (policy?.maxDays != null) {
+        maxHours = policy.maxDays * HOURS_PER_DAY
+      }
+
+      if (maxHours != null) {
         const used = await this.sumApprovedHours(params.employeeId, params.leaveType, year)
-        const maxHours = policy.maxDays * HOURS_PER_DAY
         if (used + params.hours > maxHours) {
           return {
             ok: false,
             category: "capped",
-            reason: `${typeLabel(params.leaveType)}上限 ${policy.maxDays} 天（${maxHours} 小时），今年已请 ${roundTo(
+            reason: `${typeLabel(params.leaveType)}上限 ${roundTo(maxHours / HOURS_PER_DAY, 2)} 天（${maxHours} 小时），今年已请 ${roundTo(
               used / HOURS_PER_DAY,
               2,
             )} 天，本次 ${roundTo(params.hours / HOURS_PER_DAY, 2)} 天将超上限，无法受理`,

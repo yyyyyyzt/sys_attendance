@@ -18,7 +18,7 @@ export interface ScheduleImportRow {
   备注?: string
 }
 
-/** 将排班数据导出为 xlsx Buffer */
+/** 将排班数据导出为 xlsx Buffer（明细格式） */
 export function exportSchedulesToXlsx(rows: ScheduleExportRow[]): Buffer {
   const wb = XLSX.utils.book_new()
   const ws = XLSX.utils.json_to_sheet(rows)
@@ -35,6 +35,47 @@ export function exportSchedulesToXlsx(rows: ScheduleExportRow[]): Buffer {
   ws["!cols"] = colWidths
 
   return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
+}
+
+export interface MatrixScheduleEntry {
+  teamName: string
+  employeeName: string
+  position: string
+  /** dateStr (YYYY-MM-DD) → 班次代码或空串；"休息" 用于没有排班的日期 */
+  byDate: Record<string, string>
+}
+
+/**
+ * 将排班数据导出为矩阵格式 xlsx（第 1 列班组、2 列姓名、3 列岗位，其后每列一天）。
+ * 与 example1.csv 表头格式一致：`YYYY/M/D`。
+ */
+export function exportSchedulesAsMatrix(entries: MatrixScheduleEntry[], dates: string[]): Buffer {
+  const header = ["班组", "姓名", "岗位", ...dates.map((d) => formatMatrixDate(d))]
+  const matrix: (string | number)[][] = [header]
+  for (const e of entries) {
+    const row: string[] = [e.teamName, e.employeeName, e.position]
+    for (const d of dates) {
+      row.push(e.byDate[d] || "休息")
+    }
+    matrix.push(row)
+  }
+
+  const wb = XLSX.utils.book_new()
+  const ws = XLSX.utils.aoa_to_sheet(matrix)
+  XLSX.utils.book_append_sheet(wb, ws, "排班矩阵")
+  ws["!cols"] = [
+    { wch: 8 },
+    { wch: 10 },
+    { wch: 8 },
+    ...dates.map(() => ({ wch: 6 })),
+  ]
+  return XLSX.write(wb, { type: "buffer", bookType: "xlsx" }) as Buffer
+}
+
+/** YYYY-MM-DD → YYYY/M/D（对齐 example1.csv） */
+function formatMatrixDate(isoDate: string): string {
+  const [y, m, d] = isoDate.split("-")
+  return `${y}/${Number(m)}/${Number(d)}`
 }
 
 export interface ParsedImportRow {

@@ -289,11 +289,15 @@ export default function LeavesPage() {
         </div>
         <div className="flex items-center gap-2">
           <Select
-            value={panelEmployeeId || undefined}
+            value={panelEmployeeId}
             onValueChange={(v) => openLeavePanel(v ?? "")}
           >
             <SelectTrigger className="h-9 w-40">
-              <SelectValue placeholder="查员工假期面板" />
+              <SelectValue placeholder="查员工假期面板">
+                {panelEmployeeId
+                  ? employees.find((e) => e.id === panelEmployeeId)?.name
+                  : undefined}
+              </SelectValue>
             </SelectTrigger>
             <SelectContent>
               {employees.map((e) => (

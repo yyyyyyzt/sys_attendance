@@ -12,7 +12,7 @@ import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select"
 import { Badge } from "@/components/ui/badge"
-import { ChevronLeft, ChevronRight, Plus, Trash2 } from "lucide-react"
+import { ChevronLeft, ChevronRight, Plus, Trash2, Building2 } from "lucide-react"
 import { toast } from "sonner"
 
 interface Team { id: string; name: string }
@@ -35,6 +35,87 @@ const statusMap: Record<string, { label: string; color: "default" | "secondary" 
   leave: { label: "请假", color: "secondary" },
   cancelled: { label: "已取消", color: "destructive" },
   completed: { label: "已完成", color: "outline" },
+}
+
+function EmployeeRow({
+  emp,
+  monthDates,
+  scheduleMap,
+  onCellEmpty,
+  onCellEdit,
+  onCellDelete,
+}: {
+  emp: Employee
+  monthDates: string[]
+  scheduleMap: Map<string, Schedule[]>
+  onCellEmpty: (employeeId: string, date: string) => void
+  onCellEdit: (s: Schedule) => void
+  onCellDelete: (s: Schedule) => void
+}) {
+  return (
+    <>
+      <div className="flex items-center border-r pr-2 text-xs">
+        <div className="truncate">
+          <div className="font-medium">{emp.name}</div>
+          <div className="text-[10px] text-zinc-400">{emp.position}</div>
+        </div>
+      </div>
+      {monthDates.map((date) => {
+        const items = scheduleMap.get(`${emp.id}_${date}`) ?? []
+        const weekDay = new Date(date).getDay()
+        const isWeekend = weekDay === 0 || weekDay === 6
+        return (
+          <div
+            key={date}
+            className={`flex min-h-[32px] flex-col items-center justify-center gap-0.5 ${
+              isWeekend ? "bg-zinc-50" : ""
+            }`}
+          >
+            {items.length === 0 ? (
+              <button
+                type="button"
+                onClick={() => onCellEmpty(emp.id, date)}
+                className="h-full w-full rounded text-[10px] text-zinc-200 hover:bg-zinc-100 hover:text-zinc-400"
+              >
+                +
+              </button>
+            ) : (
+              items.map((s) => {
+                const st = statusMap[s.status] ?? statusMap.scheduled
+                return (
+                  <div
+                    key={s.id}
+                    role="button"
+                    tabIndex={0}
+                    onClick={() => onCellEdit(s)}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        e.preventDefault()
+                        onCellEdit(s)
+                      }
+                    }}
+                    className="group relative w-full cursor-pointer rounded border px-0.5 py-0.5 text-[10px] leading-tight transition-colors hover:bg-zinc-50"
+                    title={`${s.shift.code} ${s.shift.startTime}-${s.shift.endTime} [${st.label}]\n点击编辑`}
+                  >
+                    <Badge variant={st.color} className="h-4 w-full justify-center text-[9px] leading-none">
+                      {s.shift.code.slice(0, 2)}
+                    </Badge>
+                    <button
+                      type="button"
+                      onClick={(e) => { e.stopPropagation(); onCellDelete(s) }}
+                      className="absolute -right-1 -top-1 hidden rounded-full bg-white p-0.5 shadow group-hover:block"
+                    >
+                      <Trash2 className="h-2.5 w-2.5 text-red-500" />
+                    </button>
+                  </div>
+                )
+              })
+            )}
+          </div>
+        )
+      })}
+    </>
+  )
 }
 
 function getMonthDates(year: number, month: number): string[] {
@@ -97,6 +178,19 @@ export default function SchedulePage() {
     if (!selectedTeam || selectedTeam === "all") return employees
     return employees.filter((e) => e.teamId === selectedTeam)
   }, [employees, selectedTeam])
+
+  /** 按班组分组后的员工列表（保持员工顺序稳定） */
+  const employeesByTeam = useMemo(() => {
+    const groups = new Map<string, { team: Team; employees: Employee[] }>()
+    for (const t of teams) {
+      groups.set(t.id, { team: t, employees: [] })
+    }
+    for (const emp of filteredEmployees) {
+      const g = groups.get(emp.teamId)
+      if (g) g.employees.push(emp)
+    }
+    return Array.from(groups.values()).filter((g) => g.employees.length > 0)
+  }, [teams, filteredEmployees])
 
   const scheduleMap = useMemo(() => {
     const map = new Map<string, Schedule[]>()
@@ -210,75 +304,73 @@ export default function SchedulePage() {
         </div>
       </div>
 
-      {/* ===== 月视图：按员工展示每日排班卡片 ===== */}
+      {/* ===== 月视图：按班组分组，班组内每员工一行，日期为列 ===== */}
       {loading ? (
         <p className="py-8 text-center text-sm text-zinc-400">加载中…</p>
-      ) : filteredEmployees.length === 0 ? (
+      ) : employeesByTeam.length === 0 ? (
         <p className="py-8 text-center text-sm text-zinc-400">当前筛选条件下无员工</p>
       ) : (
-        <div className="space-y-4">
-          {filteredEmployees.map((emp) => (
-            <Card key={emp.id}>
+        <div className="space-y-6">
+          {employeesByTeam.map(({ team, employees: teamEmployees }) => (
+            <Card key={team.id}>
               <CardHeader className="pb-2">
                 <CardTitle className="flex items-center justify-between text-sm">
-                  <span>{emp.name} <span className="font-normal text-zinc-400">({emp.position})</span></span>
-                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => openCreate(emp.id)}>
+                  <span className="flex items-center gap-2">
+                    <Building2 className="h-4 w-4 text-zinc-500" />
+                    {team.name}
+                    <span className="text-xs font-normal text-zinc-400">（{teamEmployees.length} 人）</span>
+                  </span>
+                  <Button variant="ghost" size="sm" className="h-7 text-xs" onClick={() => {
+                    setSelectedTeam(team.id)
+                    openCreate()
+                  }}>
                     <Plus className="mr-0.5 h-3 w-3" />
                     排班
                   </Button>
                 </CardTitle>
               </CardHeader>
               <CardContent className="overflow-x-auto pb-3">
-                <div className="grid auto-cols-[minmax(38px,1fr)] grid-flow-col gap-0.5" style={{ gridTemplateColumns: `repeat(${monthDates.length}, minmax(38px, 1fr))` }}>
-                  {/* 日期头 */}
+                <div
+                  className="grid gap-0.5"
+                  style={{
+                    gridTemplateColumns: `minmax(100px, 120px) repeat(${monthDates.length}, minmax(34px, 1fr))`,
+                  }}
+                >
+                  {/* 表头第一格：月份 */}
+                  <div className="border-b pb-1 text-[11px] font-medium text-zinc-500">
+                    {monthLabel}
+                  </div>
+                  {/* 日期头：周几 + 日 */}
                   {monthDates.map((d) => {
                     const day = Number(d.slice(8))
                     const weekDay = new Date(d).getDay()
                     const isWeekend = weekDay === 0 || weekDay === 6
+                    const weekLabels = ["日", "一", "二", "三", "四", "五", "六"]
                     return (
-                      <div key={d} className={`text-center text-[10px] leading-tight ${isWeekend ? "text-red-400" : "text-zinc-400"}`}>
-                        {day}
+                      <div
+                        key={d}
+                        className={`border-b pb-1 text-center text-[10px] leading-tight ${
+                          isWeekend ? "text-red-400" : "text-zinc-400"
+                        }`}
+                      >
+                        <div>{weekLabels[weekDay]}</div>
+                        <div className="font-medium">{day}</div>
                       </div>
                     )
                   })}
-                  {/* 排班格 */}
-                  {monthDates.map((date) => {
-                    const items = scheduleMap.get(`${emp.id}_${date}`) ?? []
-                    return (
-                      <div key={date} className="flex min-h-[32px] flex-col items-center justify-center gap-0.5">
-                        {items.length === 0 ? (
-                          <button
-                            onClick={() => openCreate(emp.id, date)}
-                            className="h-full w-full rounded text-[10px] text-zinc-200 hover:bg-zinc-50 hover:text-zinc-400"
-                          >
-                            +
-                          </button>
-                        ) : (
-                          items.map((s) => {
-                            const st = statusMap[s.status] ?? statusMap.scheduled
-                            return (
-                              <button
-                                key={s.id}
-                                onClick={() => openEdit(s)}
-                                className="group relative w-full rounded border px-0.5 py-0.5 text-[10px] leading-tight transition-colors hover:bg-zinc-50"
-                                title={`${s.shift.code} ${s.shift.startTime}-${s.shift.endTime} [${st.label}]\n点击编辑`}
-                              >
-                                <Badge variant={st.color} className="h-4 w-full justify-center text-[9px] leading-none">
-                                  {s.shift.code.slice(0, 2)}
-                                </Badge>
-                                <button
-                                  onClick={(e) => { e.stopPropagation(); handleDelete(s) }}
-                                  className="absolute -right-1 -top-1 hidden rounded-full bg-white p-0.5 shadow group-hover:block"
-                                >
-                                  <Trash2 className="h-2.5 w-2.5 text-red-500" />
-                                </button>
-                              </button>
-                            )
-                          })
-                        )}
-                      </div>
-                    )
-                  })}
+
+                  {/* 每个员工一行 */}
+                  {teamEmployees.map((emp) => (
+                    <EmployeeRow
+                      key={emp.id}
+                      emp={emp}
+                      monthDates={monthDates}
+                      scheduleMap={scheduleMap}
+                      onCellEmpty={openCreate}
+                      onCellEdit={openEdit}
+                      onCellDelete={handleDelete}
+                    />
+                  ))}
                 </div>
               </CardContent>
             </Card>
