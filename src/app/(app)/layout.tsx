@@ -10,7 +10,7 @@ import {
 } from "@/components/ui/sheet"
 import {
   Users, Building2, Clock, CalendarDays, FileSpreadsheet,
-  ClipboardList, BarChart3, Menu, Sparkles, Settings,
+  ClipboardList, BarChart3, Menu, Sparkles, Settings, Wallet,
 } from "lucide-react"
 import { GlobalCommandBar } from "@/components/nl/GlobalCommandBar"
 
@@ -22,6 +22,7 @@ const navItems = [
   { href: "/schedule", label: "排班表", icon: CalendarDays },
   { href: "/import-export", label: "导入导出", icon: FileSpreadsheet },
   { href: "/leaves", label: "请假管理", icon: ClipboardList },
+  { href: "/leave-quotas", label: "假期额度", icon: Wallet },
   { href: "/attendance", label: "出勤统计", icon: BarChart3 },
   { href: "/settings", label: "AI 设置", icon: Settings },
 ]

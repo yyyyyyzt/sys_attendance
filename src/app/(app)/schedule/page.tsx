@@ -257,22 +257,31 @@ export default function SchedulePage() {
                           items.map((s) => {
                             const st = statusMap[s.status] ?? statusMap.scheduled
                             return (
-                              <button
+                              <div
                                 key={s.id}
+                                role="button"
+                                tabIndex={0}
                                 onClick={() => openEdit(s)}
-                                className="group relative w-full rounded border px-0.5 py-0.5 text-[10px] leading-tight transition-colors hover:bg-zinc-50"
+                                onKeyDown={(e) => {
+                                  if (e.key === "Enter" || e.key === " ") {
+                                    e.preventDefault()
+                                    openEdit(s)
+                                  }
+                                }}
+                                className="group relative w-full cursor-pointer rounded border px-0.5 py-0.5 text-[10px] leading-tight transition-colors hover:bg-zinc-50"
                                 title={`${s.shift.code} ${s.shift.startTime}-${s.shift.endTime} [${st.label}]\n点击编辑`}
                               >
                                 <Badge variant={st.color} className="h-4 w-full justify-center text-[9px] leading-none">
                                   {s.shift.code.slice(0, 2)}
                                 </Badge>
                                 <button
+                                  type="button"
                                   onClick={(e) => { e.stopPropagation(); handleDelete(s) }}
                                   className="absolute -right-1 -top-1 hidden rounded-full bg-white p-0.5 shadow group-hover:block"
                                 >
                                   <Trash2 className="h-2.5 w-2.5 text-red-500" />
                                 </button>
-                              </button>
+                              </div>
                             )
                           })
                         )}
