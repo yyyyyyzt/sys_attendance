@@ -90,7 +90,7 @@ export const leaveService = {
       }
     }
 
-    const updated = await leaveRepo.approve(id, input.status, input.approverId)
+    const updated = await leaveRepo.approve(id, input.status, input.approverId ?? "system")
 
     if (input.status === "approved") {
       await mapLeaveToSchedules(leave.employeeId, leave.startDate, leave.endDate)
