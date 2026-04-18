@@ -5,11 +5,14 @@
  */
 
 import type { RowDataPacket } from "mysql2"
-import { queryOne } from "@/lib/db"
+import { queryOne, queryRows } from "@/lib/db"
 import { LEAVE_TYPES, type LeaveType } from "@/lib/types/leave"
 import { leaveService } from "@/lib/services/leave"
+import { leavePolicyService, typeLabel } from "@/lib/services/leave-policy"
 import { scheduleRepo } from "@/lib/repos/schedule"
 import { attendanceRepo } from "@/lib/repos/attendance"
+import { attendanceService } from "@/lib/services/attendance"
+import { leaveRepo } from "@/lib/repos/leave"
 
 interface ExecResult {
   success: boolean
@@ -18,9 +21,16 @@ interface ExecResult {
 }
 
 type EmpLite = RowDataPacket & { id: string; name: string; teamId: string }
-type TeamLite = RowDataPacket & { id: string; name: string }
+type TeamLite = RowDataPacket & { id: string; name: string; leaveThreshold: number }
 type ShiftLite = RowDataPacket & { id: string; code: string; name: string; startTime: string; endTime: string }
-type LeaveLite = RowDataPacket & { id: string; startDate: string; endDate: string }
+type LeaveLite = RowDataPacket & {
+  id: string
+  startDate: string
+  endDate: string
+  leaveType: string
+  hours: string | number
+  reason: string
+}
 
 async function findEmployeeByName(name: string) {
   return queryOne<EmpLite>("SELECT `id`, `name`, `teamId` FROM `Employee` WHERE `name` LIKE ? LIMIT 1", [
@@ -29,7 +39,10 @@ async function findEmployeeByName(name: string) {
 }
 
 async function findTeamByName(name: string) {
-  return queryOne<TeamLite>("SELECT `id`, `name` FROM `Team` WHERE `name` LIKE ? LIMIT 1", [`%${name}%`])
+  return queryOne<TeamLite>(
+    "SELECT `id`, `name`, `leaveThreshold` FROM `Team` WHERE `name` LIKE ? LIMIT 1",
+    [`%${name}%`],
+  )
 }
 
 /** 全局班次：按名称或代码模糊匹配 */
@@ -111,18 +124,51 @@ async function execCreateLeave(args: Record<string, string>): Promise<ExecResult
 async function execApproveLeave(args: Record<string, string>): Promise<ExecResult> {
   const emp = await findEmployeeByName(args.employeeName)
   if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-  const leave = await queryOne<LeaveLite>(
-    "SELECT `id`, `startDate`, `endDate` FROM `LeaveRequest` WHERE `employeeId` = ? AND `status` = 'pending' ORDER BY `createdAt` DESC LIMIT 1",
+
+  const pendings = await queryRows<LeaveLite>(
+    "SELECT `id`, `startDate`, `endDate`, `leaveType`, `hours`, `reason` FROM `LeaveRequest` WHERE `employeeId` = ? AND `status` = 'pending' ORDER BY `createdAt` DESC",
     [emp.id],
   )
-  if (!leave) return { success: false, error: `${emp.name}没有待审批的请假申请` }
+  if (pendings.length === 0) {
+    return { success: false, error: `${emp.name}没有待审批的请假申请` }
+  }
+
+  let target: LeaveLite | undefined
+  if (args.startDate) {
+    target = pendings.find((l) => l.startDate === args.startDate)
+    if (!target) {
+      return {
+        success: false,
+        error: `${emp.name}没有起始日期为「${args.startDate}」的待审批请假`,
+      }
+    }
+  } else if (pendings.length === 1) {
+    target = pendings[0]
+  } else {
+    return {
+      success: false,
+      error: `${emp.name}目前有 ${pendings.length} 条待审批请假，请指定 startDate 精确定位`,
+      data: {
+        needClarify: true,
+        candidates: pendings.map((l) => ({
+          id: l.id,
+          startDate: l.startDate,
+          endDate: l.endDate,
+          leaveType: l.leaveType,
+          hours: Number(l.hours),
+          reason: l.reason,
+        })),
+      },
+    } as ExecResult
+  }
+
   const status = args.action === "approve" ? "approved" : "rejected"
-  const approverId = args.approverId?.trim() || "nl-system"
-  await leaveService.approve(leave.id, { status, approverId })
+  const approverId = args.approverId?.trim() || "manager"
+  await leaveService.approve(target.id, { status, approverId })
   return {
     success: true,
     data: {
-      message: `已${status === "approved" ? "批准" : "驳回"}${emp.name}的请假（${leave.startDate} ~ ${leave.endDate}）`,
+      message: `已${status === "approved" ? "批准" : "驳回"}${emp.name}的请假（${target.startDate} ~ ${target.endDate}）`,
     },
   }
 }
@@ -224,6 +270,135 @@ function getBaseUrl() {
   return process.env.NEXT_PUBLIC_BASE_URL || "http://localhost:3000"
 }
 
+// ─── view_leave_panel ────────────────────────────────
+async function execViewLeavePanel(args: Record<string, string>): Promise<ExecResult> {
+  const emp = await findEmployeeByName(args.employeeName)
+  if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
+  const year = args.year ? Number(args.year) : new Date().getFullYear()
+  if (!Number.isInteger(year)) return { success: false, error: `年份 ${args.year} 无效` }
+
+  const usage = await leavePolicyService.summarizeUsage(emp.id, year)
+  const allLeaves = await leaveRepo.findAll({ employeeId: emp.id })
+  const history = allLeaves
+    .filter((l) => l.startDate.startsWith(String(year)) || l.endDate.startsWith(String(year)))
+    .map((l) => ({
+      startDate: l.startDate,
+      endDate: l.endDate,
+      leaveType: typeLabel(l.leaveType as LeaveType),
+      hours: Number(l.hours),
+      status: l.status,
+      reason: l.reason,
+    }))
+
+  const rows = usage.map((u) => ({
+    类型: typeLabel(u.leaveType),
+    年度上限: u.maxDays == null ? "无明确上限" : `${u.maxDays} 天`,
+    已用: `${u.usedDaysThisYear} 天`,
+    剩余: u.remainingDays == null ? "—" : `${u.remainingDays} 天`,
+  }))
+
+  return {
+    success: true,
+    data: {
+      employee: { id: emp.id, name: emp.name, teamId: emp.teamId },
+      year,
+      summary: rows,
+      history,
+    },
+  }
+}
+
+// ─── view_team_day_leaves ────────────────────────────
+async function execViewTeamDayLeaves(args: Record<string, string>): Promise<ExecResult> {
+  const team = await findTeamByName(args.teamName)
+  if (!team) return { success: false, error: `找不到班组「${args.teamName}」` }
+  if (!args.date) return { success: false, error: "请提供 date 参数" }
+
+  const params = new URLSearchParams({ teamId: team.id, date: args.date })
+  const res = await fetch(`${getBaseUrl()}/api/leaves/day-overview?${params}`)
+  if (!res.ok) {
+    const errBody = await res.json().catch(() => ({}))
+    return { success: false, error: errBody?.error ?? "查询失败" }
+  }
+  const data = await res.json()
+  const riskLabel = data.risk === "shortage"
+    ? "班次人员不足"
+    : data.risk === "tight"
+      ? `已达阈值 ${team.leaveThreshold} 人，建议谨慎批假`
+      : "在岗充足"
+  return { success: true, data: { ...data, riskLabel } }
+}
+
+// ─── view_pending_leaves ─────────────────────────────
+async function execViewPendingLeaves(args: Record<string, string>): Promise<ExecResult> {
+  const params = new URLSearchParams()
+  if (args.teamName) {
+    const team = await findTeamByName(args.teamName)
+    if (!team) return { success: false, error: `找不到班组「${args.teamName}」` }
+    params.set("teamId", team.id)
+  }
+  const url = `${getBaseUrl()}/api/leaves/pending${params.toString() ? `?${params}` : ""}`
+  const res = await fetch(url)
+  if (!res.ok) return { success: false, error: "查询待审批队列失败" }
+  const data = await res.json()
+  return { success: true, data }
+}
+
+// ─── view_team_day_attendance ────────────────────────
+async function execViewTeamDayAttendance(args: Record<string, string>): Promise<ExecResult> {
+  const team = await findTeamByName(args.teamName)
+  if (!team) return { success: false, error: `找不到班组「${args.teamName}」` }
+  if (!args.date) return { success: false, error: "请提供 date 参数" }
+
+  const rows = await attendanceService.deriveDailyAttendance({
+    from: args.date,
+    to: args.date,
+    teamId: team.id,
+  })
+
+  const normal = rows.filter((r) => r.status === "normal").length
+  const leave = rows.filter((r) => r.status === "leave").length
+  const absent = rows.filter((r) => r.status === "absent").length
+
+  return {
+    success: true,
+    data: {
+      team: { id: team.id, name: team.name },
+      date: args.date,
+      summary: {
+        应到: rows.length,
+        实到: normal,
+        请假: leave,
+        缺勤: absent,
+        说明: "未接入打卡，以上为基于排班的默认出勤",
+      },
+      rows: rows.map((r) => ({
+        员工: r.employeeName,
+        岗位: r.position,
+        班次: r.shiftCode ?? "—",
+        状态: statusLabel(r.status),
+      })),
+    },
+  }
+}
+
+function statusLabel(s: string): string {
+  switch (s) {
+    case "normal":
+      return "出勤"
+    case "leave":
+      return "请假"
+    case "absent":
+      return "缺勤"
+    case "late":
+      return "迟到"
+    case "early":
+      return "早退"
+    default:
+      return s
+  }
+}
+
 // ─── 路由分发 ────────────────────────────────────────
 const handlers: Record<string, (args: Record<string, string>) => Promise<ExecResult>> = {
   view_schedule: execViewSchedule,
@@ -234,6 +409,10 @@ const handlers: Record<string, (args: Record<string, string>) => Promise<ExecRes
   export_schedule: execExportSchedule,
   view_leave_gaps: execViewLeaveGaps,
   view_attendance_alerts: execViewAttendanceAlerts,
+  view_leave_panel: execViewLeavePanel,
+  view_team_day_leaves: execViewTeamDayLeaves,
+  view_pending_leaves: execViewPendingLeaves,
+  view_team_day_attendance: execViewTeamDayAttendance,
 }
 
 export async function executeFunction(name: string, args: Record<string, string>): Promise<string> {
