@@ -8,22 +8,24 @@
 - 语言: TypeScript (严格模式)
 - 样式: Tailwind CSS
 - UI组件: ShadCN UI
-- 数据库: Prisma + SQLite
+- 数据库: MySQL + mysql2（`DATABASE_URL`，见 `.env`）；表结构与种子见 `db/schema.sql`、`db/seed.sql`
 - AI: OpenAI Function Call
 
 ## 目录结构
-- prisma/schema.prisma: 数据库模型
-- src/app/: 页面和API
-- src/components/: 组件
-- src/lib/: 工具函数
+- `db/schema.sql`、`db/seed.sql`: 建表与演示数据
+- `src/app/`: 页面和 API
+- `src/components/`: 组件
+- `src/lib/`: 工具、`repos` 数据访问
 
 ## 常用命令
-- npm install: 安装依赖
-- npm run dev: 启动开发服务器
-- npm run build: 生产构建
-- npm run lint: 代码检查
-- npx tsc --noEmit: 类型检查
-- npx prisma migrate dev: 数据库迁移
+- `npm install`: 安装依赖
+- `npm run dev`: 启动开发服务器
+- `npm run build`: 生产构建
+- `npm run lint`: 代码检查
+- `npx tsc --noEmit`: 类型检查
+- `npm run db:sql`: 执行 `db/schema.sql` + `db/seed.sql`（参数 `schema` / `seed` / `all`）
+- `npm run db:import`: 从根目录 `example1.csv` / `example2.csv` 全量导入
+- `npm run sample:mysql`: 仅导入少量样本行（脚本内可调）
 
 ## 开发流程
 必须严格按照 progress.md 中的阶段顺序开发，完成一个阶段并验证通过后，才能进入下一个阶段。

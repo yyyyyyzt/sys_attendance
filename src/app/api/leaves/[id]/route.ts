@@ -1,7 +1,7 @@
 import { NextResponse } from "next/server"
 import { apiRouteError } from "@/lib/api-route-error"
 import { leaveService } from "@/lib/services/leave"
-import { approveLeaveSchema } from "@/lib/validation/leave"
+import { approveLeaveSchema, cancelLeaveSchema } from "@/lib/validation/leave"
 
 type Params = { params: Promise<{ id: string }> }
 
@@ -20,17 +20,25 @@ export async function PATCH(request: Request, { params }: Params) {
   try {
     const { id } = await params
     const body = await request.json()
-    const parsed = approveLeaveSchema.safeParse(body)
-    if (!parsed.success) {
-      return NextResponse.json(
-        { error: parsed.error.issues.map((i) => i.message).join("；") },
-        { status: 400 },
-      )
+
+    const approved = approveLeaveSchema.safeParse(body)
+    if (approved.success) {
+      const leave = await leaveService.approve(id, approved.data)
+      return NextResponse.json(leave)
     }
-    const leave = await leaveService.approve(id, parsed.data)
-    return NextResponse.json(leave)
+
+    const cancelled = cancelLeaveSchema.safeParse(body)
+    if (cancelled.success) {
+      const leave = await leaveService.cancel(id)
+      return NextResponse.json(leave)
+    }
+
+    return NextResponse.json(
+      { error: "请求体无效：审批请传 {status:\"approved\"|\"rejected\", approverId}；撤销请传 {status:\"cancelled\"}" },
+      { status: 400 },
+    )
   } catch (err) {
-    const msg = err instanceof Error ? err.message : "审批失败"
+    const msg = err instanceof Error ? err.message : "更新失败"
     return apiRouteError("PATCH /api/leaves/[id]", err, msg, 400)
   }
 }

@@ -4,7 +4,7 @@
 - [x] 创建项目目录结构
 - [x] 初始化Git仓库
 - [x] 创建Harness配置文件
-- [x] 初始化Prisma数据库
+- [x] MySQL 表结构（`db/schema.sql`）与 mysql2 数据访问层
 - [x] 配置Tailwind和ShadCN
 - [x] 创建基础布局组件
 

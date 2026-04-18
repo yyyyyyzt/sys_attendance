@@ -6,16 +6,18 @@
     "dev": "next dev",
     "build": "next build",
     "start": "next start",
-    "lint": "eslint"
+    "lint": "eslint",
+    "db:sql": "tsx --require dotenv/config scripts/apply-sql.ts",
+    "db:import": "tsx --require dotenv/config scripts/import-matrix.ts",
+    "db:seed": "tsx --require dotenv/config scripts/apply-sql.ts seed",
+    "sample:mysql": "tsx --require dotenv/config scripts/sample-import-mysql.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
-    "@prisma/adapter-better-sqlite3": "^7.7.0",
-    "@prisma/client": "^7.7.0",
-    "better-sqlite3": "^12.9.0",
     "class-variance-authority": "^0.7.1",
     "clsx": "^2.1.1",
     "lucide-react": "^1.8.0",
+    "mysql2": "^3.22.1",
     "next": "16.2.3",
     "next-themes": "^0.4.6",
     "openai": "^6.34.0",
@@ -30,14 +32,14 @@
   },
   "devDependencies": {
     "@tailwindcss/postcss": "^4",
-    "@types/better-sqlite3": "^7.6.13",
     "@types/node": "^20",
     "@types/react": "^19",
     "@types/react-dom": "^19",
+    "dotenv": "^16.4.5",
     "eslint": "^9",
     "eslint-config-next": "16.2.3",
-    "prisma": "^7.7.0",
     "tailwindcss": "^4",
+    "tsx": "^4.19.2",
     "typescript": "^5"
   }
 }

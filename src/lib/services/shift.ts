@@ -1,10 +1,9 @@
 import { shiftRepo } from "@/lib/repos/shift"
-import { teamRepo } from "@/lib/repos/team"
 import type { CreateShiftInput, UpdateShiftInput } from "@/lib/validation/shift"
 
 export const shiftService = {
-  list(teamId?: string) {
-    return shiftRepo.findAll(teamId)
+  list() {
+    return shiftRepo.findAll()
   },
 
   getById(id: string) {
@@ -12,16 +11,12 @@ export const shiftService = {
   },
 
   async create(data: CreateShiftInput) {
-    const team = await teamRepo.findById(data.teamId)
-    if (!team) throw new Error("所选班组不存在")
+    const dup = await shiftRepo.findByCode(data.code)
+    if (dup) throw new Error("该班次代码已存在")
     return shiftRepo.create(data)
   },
 
-  async update(id: string, data: UpdateShiftInput) {
-    if (data.teamId) {
-      const team = await teamRepo.findById(data.teamId)
-      if (!team) throw new Error("所选班组不存在")
-    }
+  update(id: string, data: UpdateShiftInput) {
     return shiftRepo.update(id, data)
   },
 

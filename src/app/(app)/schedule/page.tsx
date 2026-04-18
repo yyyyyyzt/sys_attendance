@@ -17,7 +17,7 @@ import { toast } from "sonner"
 
 interface Team { id: string; name: string }
 interface Employee { id: string; name: string; position: string; teamId: string }
-interface Shift { id: string; name: string; startTime: string; endTime: string; teamId: string }
+interface Shift { id: string; code: string; name: string; startTime: string; endTime: string }
 interface Schedule {
   id: string
   employeeId: string
@@ -27,7 +27,7 @@ interface Schedule {
   status: string
   note: string | null
   employee: { id: string; name: string; position: string }
-  shift: { id: string; name: string; startTime: string; endTime: string }
+  shift: { id: string; code: string; name: string; startTime: string; endTime: string }
 }
 
 const statusMap: Record<string, { label: string; color: "default" | "secondary" | "destructive" | "outline" }> = {
@@ -178,10 +178,7 @@ export default function SchedulePage() {
     fetchSchedules()
   }
 
-  const teamShifts = useMemo(() => {
-    if (!form.teamId) return shifts
-    return shifts.filter((s) => s.teamId === form.teamId)
-  }, [shifts, form.teamId])
+  const teamShifts = useMemo(() => shifts, [shifts])
 
   return (
     <div className="space-y-4">
@@ -264,10 +261,10 @@ export default function SchedulePage() {
                                 key={s.id}
                                 onClick={() => openEdit(s)}
                                 className="group relative w-full rounded border px-0.5 py-0.5 text-[10px] leading-tight transition-colors hover:bg-zinc-50"
-                                title={`${s.shift.name} ${s.shift.startTime}-${s.shift.endTime} [${st.label}]\n点击编辑`}
+                                title={`${s.shift.code} ${s.shift.startTime}-${s.shift.endTime} [${st.label}]\n点击编辑`}
                               >
                                 <Badge variant={st.color} className="h-4 w-full justify-center text-[9px] leading-none">
-                                  {s.shift.name.slice(0, 2)}
+                                  {s.shift.code.slice(0, 2)}
                                 </Badge>
                                 <button
                                   onClick={(e) => { e.stopPropagation(); handleDelete(s) }}
@@ -337,12 +334,12 @@ export default function SchedulePage() {
               <Select value={form.shiftId} onValueChange={(v) => setForm({ ...form, shiftId: v ?? "" })}>
                 <SelectTrigger>
                   <SelectValue placeholder="请选择班次">
-                    {form.shiftId ? (() => { const s = teamShifts.find((s) => s.id === form.shiftId); return s ? `${s.name}（${s.startTime}–${s.endTime}）` : undefined })() : undefined}
+                    {form.shiftId ? (() => { const s = teamShifts.find((x) => x.id === form.shiftId); return s ? `${s.code}（${s.startTime}–${s.endTime}）` : undefined })() : undefined}
                   </SelectValue>
                 </SelectTrigger>
                 <SelectContent>
                   {teamShifts.map((s) => (
-                    <SelectItem key={s.id} value={s.id}>{s.name}（{s.startTime}–{s.endTime}）</SelectItem>
+                    <SelectItem key={s.id} value={s.id}>{s.code}（{s.startTime}–{s.endTime}）</SelectItem>
                   ))}
                 </SelectContent>
               </Select>

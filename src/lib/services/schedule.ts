@@ -21,9 +21,6 @@ export const scheduleService = {
 
     const shift = await shiftRepo.findById(data.shiftId)
     if (!shift) throw new Error("班次不存在")
-    if (shift.teamId !== data.teamId) {
-      throw new Error("班次不属于该班组")
-    }
 
     const dup = await scheduleRepo.findDuplicate(data.employeeId, data.shiftDate, data.shiftId)
     if (dup) throw new Error("该员工在同一天已有相同班次排班")
@@ -38,9 +35,6 @@ export const scheduleService = {
     if (data.shiftId) {
       const shift = await shiftRepo.findById(data.shiftId)
       if (!shift) throw new Error("班次不存在")
-      if (shift.teamId !== existing.teamId) {
-        throw new Error("班次不属于该班组")
-      }
       const dup = await scheduleRepo.findDuplicate(
         existing.employeeId,
         existing.shiftDate,

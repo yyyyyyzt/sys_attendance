@@ -1,7 +1,9 @@
 import { NextResponse } from "next/server"
 import { apiRouteError } from "@/lib/api-route-error"
 import { parseScheduleImport } from "@/lib/scheduling/excel"
-import { prisma } from "@/lib/db"
+import { employeeRepo } from "@/lib/repos/employee"
+import { shiftRepo } from "@/lib/repos/shift"
+import { teamRepo } from "@/lib/repos/team"
 import { scheduleRepo } from "@/lib/repos/schedule"
 import type { CreateScheduleInput } from "@/lib/validation/schedule"
 
@@ -23,13 +25,14 @@ export async function POST(request: Request) {
       )
     }
 
-    const teams = await prisma.team.findMany()
-    const employees = await prisma.employee.findMany()
-    const shifts = await prisma.shift.findMany()
+    const teams = await teamRepo.findAll()
+    const employees = await employeeRepo.findAll()
+    const shifts = await shiftRepo.findAll()
 
-    const teamMap = new Map(teams.map((t: { name: string; id: string }) => [t.name, t]))
-    const empMap = new Map(employees.map((e: { teamId: string; name: string; id: string }) => [`${e.teamId}_${e.name}`, e]))
-    const shiftMap = new Map(shifts.map((s: { teamId: string; name: string; id: string }) => [`${s.teamId}_${s.name}`, s]))
+    const teamMap = new Map(teams.map((t) => [t.name, t]))
+    const empMap = new Map(employees.map((e) => [`${e.teamId}_${e.name}`, e]))
+    const shiftByCode = new Map(shifts.map((s) => [s.code, s]))
+    const shiftByName = new Map(shifts.map((s) => [s.name, s]))
 
     const validItems: CreateScheduleInput[] = []
     const resolveErrors: string[] = []
@@ -48,9 +51,9 @@ export async function POST(request: Request) {
         resolveErrors.push(`第 ${row.rowIndex} 行员工「${row.employeeName}」在班组「${row.teamName}」中不存在`)
         continue
       }
-      const shift = shiftMap.get(`${team.id}_${row.shiftName}`)
+      const shift = shiftByCode.get(row.shiftName) ?? shiftByName.get(row.shiftName)
       if (!shift) {
-        resolveErrors.push(`第 ${row.rowIndex} 行班次「${row.shiftName}」在班组「${row.teamName}」中不存在`)
+        resolveErrors.push(`第 ${row.rowIndex} 行班次「${row.shiftName}」不存在（请使用全局班次代码或名称）`)
         continue
       }
       const status = (validStatuses.includes(row.status as ScheduleStatus) ? row.status : "scheduled") as ScheduleStatus

@@ -24,6 +24,8 @@ interface Team { id: string; name: string }
 interface LeaveRequest {
   id: string
   employeeId: string
+  leaveType: string
+  hours: string | number
   startDate: string
   endDate: string
   reason: string
@@ -32,6 +34,17 @@ interface LeaveRequest {
   createdAt: string
   employee: { id: string; name: string; position: string; teamId: string }
 }
+
+const LEAVE_TYPES = [
+  { value: "PERSONAL", label: "事假" },
+  { value: "ANNUAL", label: "年假" },
+  { value: "CHILD_CARE", label: "育儿假" },
+  { value: "SICK", label: "病假" },
+  { value: "MARRIAGE", label: "婚假" },
+  { value: "NURSING", label: "护理假" },
+  { value: "PATERNITY", label: "陪产假" },
+  { value: "BEREAVEMENT", label: "丧假" },
+] as const
 interface GapInfo {
   shiftDate: string
   shiftId: string
@@ -53,6 +66,7 @@ const statusConfig: Record<string, { label: string; variant: "default" | "second
   pending: { label: "待审批", variant: "secondary" },
   approved: { label: "已通过", variant: "default" },
   rejected: { label: "已拒绝", variant: "destructive" },
+  cancelled: { label: "已撤销", variant: "outline" },
 }
 
 export default function LeavesPage() {
@@ -63,7 +77,14 @@ export default function LeavesPage() {
   const [filterStatus, setFilterStatus] = useState("all")
 
   const [applyOpen, setApplyOpen] = useState(false)
-  const [applyForm, setApplyForm] = useState({ employeeId: "", startDate: "", endDate: "", reason: "" })
+  const [applyForm, setApplyForm] = useState({
+    employeeId: "",
+    leaveType: "PERSONAL",
+    hours: "8",
+    startDate: "",
+    endDate: "",
+    reason: "",
+  })
 
   const [gaps, setGaps] = useState<GapInfo[]>([])
   const [gapTeam, setGapTeam] = useState("")
@@ -102,7 +123,10 @@ export default function LeavesPage() {
     const res = await fetch("/api/leaves", {
       method: "POST",
       headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(applyForm),
+      body: JSON.stringify({
+        ...applyForm,
+        hours: Number(applyForm.hours) || 8,
+      }),
     })
     if (!res.ok) {
       const err = await res.json()
@@ -111,7 +135,22 @@ export default function LeavesPage() {
     }
     toast.success("请假申请已提交")
     setApplyOpen(false)
-    setApplyForm({ employeeId: "", startDate: "", endDate: "", reason: "" })
+    setApplyForm({ employeeId: "", leaveType: "PERSONAL", hours: "8", startDate: "", endDate: "", reason: "" })
+    fetchLeaves()
+  }
+
+  async function handleCancelLeave(id: string) {
+    const res = await fetch(`/api/leaves/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ status: "cancelled" }),
+    })
+    if (!res.ok) {
+      const err = await res.json()
+      toast.error(err.error ?? "撤销失败")
+      return
+    }
+    toast.success("已撤销")
     fetchLeaves()
   }
 
@@ -203,6 +242,7 @@ export default function LeavesPage() {
                 <SelectItem value="pending">待审批</SelectItem>
                 <SelectItem value="approved">已通过</SelectItem>
                 <SelectItem value="rejected">已拒绝</SelectItem>
+                <SelectItem value="cancelled">已撤销</SelectItem>
               </SelectContent>
             </Select>
           </div>
@@ -219,10 +259,12 @@ export default function LeavesPage() {
                   <TableHeader>
                     <TableRow>
                       <TableHead>员工</TableHead>
+                      <TableHead>类型</TableHead>
+                      <TableHead className="w-16 text-center">小时</TableHead>
                       <TableHead>起止日期</TableHead>
                       <TableHead>原因</TableHead>
                       <TableHead className="w-24 text-center">状态</TableHead>
-                      <TableHead className="w-32 text-right">操作</TableHead>
+                      <TableHead className="w-40 text-right">操作</TableHead>
                     </TableRow>
                   </TableHeader>
                   <TableBody>
@@ -231,13 +273,15 @@ export default function LeavesPage() {
                       return (
                         <TableRow key={l.id}>
                           <TableCell className="font-medium">{l.employee.name}</TableCell>
+                          <TableCell className="text-xs text-zinc-500">{l.leaveType}</TableCell>
+                          <TableCell className="text-center text-sm">{l.hours}</TableCell>
                           <TableCell>{l.startDate} ~ {l.endDate}</TableCell>
                           <TableCell className="max-w-[200px] truncate text-zinc-500">{l.reason}</TableCell>
                           <TableCell className="text-center">
                             <Badge variant={sc.variant}>{sc.label}</Badge>
                           </TableCell>
                           <TableCell className="text-right">
-                            <div className="flex justify-end gap-1">
+                            <div className="flex flex-wrap justify-end gap-1">
                               {l.status === "pending" && (
                                 <>
                                   <Button variant="ghost" size="icon" title="批准" onClick={() => handleApprove(l.id, "approved")}>
@@ -247,6 +291,11 @@ export default function LeavesPage() {
                                     <X className="h-4 w-4 text-red-500" />
                                   </Button>
                                 </>
+                              )}
+                              {(l.status === "pending" || l.status === "approved") && (
+                                <Button variant="ghost" size="sm" className="h-8 text-xs" title="撤销请假" onClick={() => handleCancelLeave(l.id)}>
+                                  撤销
+                                </Button>
                               )}
                               <Button variant="ghost" size="icon" title="删除" onClick={() => handleDelete(l.id)}>
                                 <Trash2 className="h-4 w-4 text-zinc-400" />
@@ -355,6 +404,25 @@ export default function LeavesPage() {
                   {employees.map((e) => <SelectItem key={e.id} value={e.id}>{e.name}</SelectItem>)}
                 </SelectContent>
               </Select>
+            </div>
+            <div className="grid grid-cols-2 gap-4">
+              <div className="space-y-2">
+                <Label>请假类型</Label>
+                <Select value={applyForm.leaveType} onValueChange={(v) => setApplyForm({ ...applyForm, leaveType: v ?? "PERSONAL" })}>
+                  <SelectTrigger>
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {LEAVE_TYPES.map((t) => (
+                      <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <div className="space-y-2">
+                <Label>小时数</Label>
+                <Input type="number" min={0.5} step={0.5} value={applyForm.hours} onChange={(e) => setApplyForm({ ...applyForm, hours: e.target.value })} />
+              </div>
             </div>
             <div className="grid grid-cols-2 gap-4">
               <div className="space-y-2">

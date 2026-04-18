@@ -1,8 +1,11 @@
-import { prisma } from "@/lib/db"
+import { execute, queryOne, queryRows } from "@/lib/db"
 import { leaveRepo } from "@/lib/repos/leave"
 import { employeeRepo } from "@/lib/repos/employee"
+import { shiftRepo } from "@/lib/repos/shift"
+import { teamRepo } from "@/lib/repos/team"
 import { jsonToStringArray } from "@/lib/json-array"
 import type { CreateLeaveInput, ApproveLeaveInput, LeaveQuery } from "@/lib/validation/leave"
+import type { RowDataPacket } from "mysql2"
 
 export interface GapInfo {
   shiftDate: string
@@ -57,30 +60,38 @@ export const leaveService = {
     return updated
   },
 
+  /** 撤销请假（不恢复排班状态，需人工或另流程处理） */
+  async cancel(id: string) {
+    const leave = await leaveRepo.findById(id)
+    if (!leave) throw new Error("请假记录不存在")
+    if (leave.status === "cancelled") throw new Error("该请假已撤销")
+    if (leave.status === "rejected") throw new Error("已驳回的记录无法撤销")
+    return leaveRepo.cancel(id)
+  },
+
   delete(id: string) {
     return leaveRepo.delete(id)
   },
 
-  /** 检测指定日期范围内各班次的人员缺口 */
+  /** 检测指定日期范围内各全局班次在该班组的人员缺口 */
   async detectGaps(teamId: string, from: string, to: string): Promise<GapInfo[]> {
-    const shifts = await prisma.shift.findMany({
-      where: { teamId },
-      include: { team: { select: { name: true } } },
-    })
+    const team = await teamRepo.findById(teamId)
+    if (!team) return []
 
+    const shifts = await shiftRepo.findAll()
     const gaps: GapInfo[] = []
     const dates = getDateRange(from, to)
 
     for (const date of dates) {
       for (const shift of shifts) {
-        const scheduledCount = await prisma.schedule.count({
-          where: {
-            teamId,
-            shiftId: shift.id,
-            shiftDate: date,
-            status: "scheduled",
-          },
-        })
+        const cntRow = await queryOne<RowDataPacket & { c: number }>(
+          `
+          SELECT COUNT(*) AS c FROM \`Schedule\`
+          WHERE \`teamId\` = ? AND \`shiftId\` = ? AND \`shiftDate\` = ? AND \`status\` = 'scheduled'
+        `,
+          [teamId, shift.id, date],
+        )
+        const scheduledCount = Number(cntRow?.c ?? 0)
 
         if (scheduledCount < shift.requiredCount) {
           gaps.push({
@@ -88,7 +99,7 @@ export const leaveService = {
             shiftId: shift.id,
             shiftName: shift.name,
             teamId,
-            teamName: shift.team.name,
+            teamName: team.name,
             requiredCount: shift.requiredCount,
             currentCount: scheduledCount,
             gap: shift.requiredCount - scheduledCount,
@@ -106,34 +117,33 @@ export const leaveService = {
     shiftDate: string,
     shiftId: string,
   ): Promise<SubstituteCandidate[]> {
-    const shift = await prisma.shift.findUnique({ where: { id: shiftId } })
+    const shift = await shiftRepo.findById(shiftId)
     if (!shift) return []
 
-    const allEmployees = await prisma.employee.findMany({
-      where: { teamId, status: "active" },
-    })
+    const allEmployees = await employeeRepo.findAll(teamId)
+    const active = allEmployees.filter(
+      (e: { status?: string }) => (e as { status: string }).status === "active",
+    )
 
-    const busyEmployeeIds = await prisma.schedule.findMany({
-      where: {
-        teamId,
-        shiftDate,
-        status: { in: ["scheduled", "completed"] },
-      },
-      select: { employeeId: true },
-    })
-    const busySet = new Set(busyEmployeeIds.map((s: { employeeId: string }) => s.employeeId))
+    const busyRows = await queryRows<RowDataPacket & { employeeId: string }>(
+      `
+      SELECT \`employeeId\` FROM \`Schedule\`
+      WHERE \`teamId\` = ? AND \`shiftDate\` = ? AND \`status\` IN ('scheduled', 'completed')
+    `,
+      [teamId, shiftDate],
+    )
+    const busySet = new Set(busyRows.map((s) => s.employeeId))
 
-    const onLeaveIds = await prisma.leaveRequest.findMany({
-      where: {
-        status: "approved",
-        startDate: { lte: shiftDate },
-        endDate: { gte: shiftDate },
-      },
-      select: { employeeId: true },
-    })
-    const leaveSet = new Set(onLeaveIds.map((l: { employeeId: string }) => l.employeeId))
+    const leaveRows = await queryRows<RowDataPacket & { employeeId: string }>(
+      `
+      SELECT \`employeeId\` FROM \`LeaveRequest\`
+      WHERE \`status\` = 'approved' AND \`startDate\` <= ? AND \`endDate\` >= ?
+    `,
+      [shiftDate, shiftDate],
+    )
+    const leaveSet = new Set(leaveRows.map((l) => l.employeeId))
 
-    return allEmployees
+    return active
       .filter((e: { id: string }) => !busySet.has(e.id) && !leaveSet.has(e.id))
       .map((e: { id: string; name: string; position: string; skills: unknown }) => ({
         id: e.id,
@@ -146,14 +156,14 @@ export const leaveService = {
 
 /** 将请假期间的已排班记录标记为 leave */
 async function mapLeaveToSchedules(employeeId: string, startDate: string, endDate: string) {
-  await prisma.schedule.updateMany({
-    where: {
-      employeeId,
-      shiftDate: { gte: startDate, lte: endDate },
-      status: "scheduled",
-    },
-    data: { status: "leave" },
-  })
+  await execute(
+    `
+    UPDATE \`Schedule\`
+    SET \`status\` = 'leave', \`updatedAt\` = NOW(3)
+    WHERE \`employeeId\` = ? AND \`shiftDate\` >= ? AND \`shiftDate\` <= ? AND \`status\` = 'scheduled'
+  `,
+    [employeeId, startDate, endDate],
+  )
 }
 
 function getDateRange(from: string, to: string): string[] {

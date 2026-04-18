@@ -4,7 +4,12 @@
  * 返回结构化结果供 LLM 总结回复用户。
  */
 
-import { prisma } from "@/lib/db"
+import type { RowDataPacket } from "mysql2"
+import { queryOne } from "@/lib/db"
+import { LEAVE_TYPES, type LeaveType } from "@/lib/types/leave"
+import { leaveService } from "@/lib/services/leave"
+import { scheduleRepo } from "@/lib/repos/schedule"
+import { attendanceRepo } from "@/lib/repos/attendance"
 
 interface ExecResult {
   success: boolean
@@ -12,84 +17,112 @@ interface ExecResult {
   error?: string
 }
 
+type EmpLite = RowDataPacket & { id: string; name: string; teamId: string }
+type TeamLite = RowDataPacket & { id: string; name: string }
+type ShiftLite = RowDataPacket & { id: string; code: string; name: string; startTime: string; endTime: string }
+type LeaveLite = RowDataPacket & { id: string; startDate: string; endDate: string }
+
 async function findEmployeeByName(name: string) {
-  return prisma.employee.findFirst({ where: { name: { contains: name } } })
+  return queryOne<EmpLite>("SELECT `id`, `name`, `teamId` FROM `Employee` WHERE `name` LIKE ? LIMIT 1", [
+    `%${name}%`,
+  ])
 }
 
 async function findTeamByName(name: string) {
-  return prisma.team.findFirst({ where: { name: { contains: name } } })
+  return queryOne<TeamLite>("SELECT `id`, `name` FROM `Team` WHERE `name` LIKE ? LIMIT 1", [`%${name}%`])
 }
 
-async function findShiftByName(name: string, teamId?: string) {
-  const where: Record<string, unknown> = { name: { contains: name } }
-  if (teamId) where.teamId = teamId
-  return prisma.shift.findFirst({ where })
+/** 全局班次：按名称或代码模糊匹配 */
+async function findShiftByName(name: string) {
+  return queryOne<ShiftLite>(
+    "SELECT `id`, `code`, `name`, `startTime`, `endTime` FROM `Shift` WHERE `name` LIKE ? OR `code` LIKE ? LIMIT 1",
+    [`%${name}%`, `%${name}%`],
+  )
+}
+
+function resolveLeaveType(raw: string): LeaveType {
+  const legacy: Record<string, LeaveType> = {
+    annual: "ANNUAL",
+    sick: "SICK",
+    personal: "PERSONAL",
+    other: "PERSONAL",
+  }
+  const k = raw.toLowerCase()
+  if (legacy[k]) return legacy[k]
+  if ((LEAVE_TYPES as readonly string[]).includes(raw)) return raw as LeaveType
+  return "PERSONAL"
 }
 
 // ─── view_schedule ───────────────────────────────────
 async function execViewSchedule(args: Record<string, string>): Promise<ExecResult> {
-  const where: Record<string, unknown> = {
-    shiftDate: { gte: args.from, lte: args.to },
+  const q: { from?: string; to?: string; employeeId?: string; teamId?: string } = {
+    from: args.from,
+    to: args.to,
   }
   if (args.employeeName) {
     const emp = await findEmployeeByName(args.employeeName)
     if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-    where.employeeId = emp.id
+    q.employeeId = emp.id
   }
   if (args.teamName) {
     const team = await findTeamByName(args.teamName)
     if (!team) return { success: false, error: `找不到班组「${args.teamName}」` }
-    where.teamId = team.id
+    q.teamId = team.id
   }
-  const schedules = await prisma.schedule.findMany({
-    where,
-    include: { employee: true, shift: true, team: true },
-    orderBy: [{ shiftDate: "asc" }],
-    take: 50,
-  })
-  const rows = schedules.map((s) => ({
+  const schedules = await scheduleRepo.findAll(q)
+  const sliced = schedules.slice(0, 50)
+  const rows = sliced.map((s) => ({
     日期: s.shiftDate,
     员工: s.employee.name,
     班组: s.team.name,
-    班次: s.shift.name,
+    班次: `${s.shift.code} ${s.shift.name}`,
     时段: `${s.shift.startTime}-${s.shift.endTime}`,
     状态: s.status,
   }))
-  return { success: true, data: { total: schedules.length, rows } }
+  return { success: true, data: { total: sliced.length, rows } }
 }
 
 // ─── create_leave ────────────────────────────────────
 async function execCreateLeave(args: Record<string, string>): Promise<ExecResult> {
   const emp = await findEmployeeByName(args.employeeName)
   if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-  const typeLabel: Record<string, string> = { annual: "年假", sick: "病假", personal: "事假", other: "其他" }
-  const leave = await prisma.leaveRequest.create({
-    data: {
-      employeeId: emp.id,
-      startDate: args.startDate,
-      endDate: args.endDate,
-      reason: `[${typeLabel[args.type] ?? args.type}] ${args.reason}`,
-      status: "pending",
-    },
+  const leaveType = resolveLeaveType(args.type ?? args.leaveType ?? "PERSONAL")
+  const hours = args.hours ? Number(args.hours) : 8
+  const leave = await leaveService.create({
+    employeeId: emp.id,
+    leaveType,
+    startDate: args.startDate,
+    endDate: args.endDate,
+    hours: Number.isFinite(hours) && hours > 0 ? hours : 8,
+    shiftIds: [],
+    reason: args.reason,
   })
-  return { success: true, data: { id: leave.id, message: `已为${emp.name}提交${typeLabel[args.type] ?? args.type}请假（${args.startDate} ~ ${args.endDate}），等待审批` } }
+  if (!leave) return { success: false, error: "创建请假失败" }
+  return {
+    success: true,
+    data: {
+      id: leave.id,
+      message: `已为${emp.name}提交${leaveType}请假（${args.startDate} ~ ${args.endDate}），等待审批`,
+    },
+  }
 }
 
 // ─── approve_leave ───────────────────────────────────
 async function execApproveLeave(args: Record<string, string>): Promise<ExecResult> {
   const emp = await findEmployeeByName(args.employeeName)
   if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-  const leave = await prisma.leaveRequest.findFirst({
-    where: { employeeId: emp.id, status: "pending" },
-    orderBy: { createdAt: "desc" },
-  })
+  const leave = await queryOne<LeaveLite>(
+    "SELECT `id`, `startDate`, `endDate` FROM `LeaveRequest` WHERE `employeeId` = ? AND `status` = 'pending' ORDER BY `createdAt` DESC LIMIT 1",
+    [emp.id],
+  )
   if (!leave) return { success: false, error: `${emp.name}没有待审批的请假申请` }
-  const newStatus = args.action === "approve" ? "approved" : "rejected"
-  await prisma.leaveRequest.update({ where: { id: leave.id }, data: { status: newStatus } })
+  const status = args.action === "approve" ? "approved" : "rejected"
+  const approverId = args.approverId?.trim() || "nl-system"
+  await leaveService.approve(leave.id, { status, approverId })
   return {
     success: true,
     data: {
-      message: `已${newStatus === "approved" ? "批准" : "驳回"}${emp.name}的请假（${leave.startDate} ~ ${leave.endDate}）`,
+      message: `已${status === "approved" ? "批准" : "驳回"}${emp.name}的请假（${leave.startDate} ~ ${leave.endDate}）`,
     },
   }
 }
@@ -98,20 +131,19 @@ async function execApproveLeave(args: Record<string, string>): Promise<ExecResul
 async function execCreateSchedule(args: Record<string, string>): Promise<ExecResult> {
   const emp = await findEmployeeByName(args.employeeName)
   if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-  const shift = await findShiftByName(args.shiftName, emp.teamId)
+  const shift = await findShiftByName(args.shiftName)
   if (!shift) return { success: false, error: `找不到班次「${args.shiftName}」` }
-  const schedule = await prisma.schedule.create({
-    data: {
-      employeeId: emp.id,
-      teamId: emp.teamId,
-      shiftId: shift.id,
-      shiftDate: args.date,
-      status: "scheduled",
-    },
+  const schedule = await scheduleRepo.create({
+    employeeId: emp.id,
+    teamId: emp.teamId,
+    shiftId: shift.id,
+    shiftDate: args.date,
+    status: "scheduled",
   })
+  if (!schedule) return { success: false, error: "创建排班失败" }
   return {
     success: true,
-    data: { id: schedule.id, message: `已为${emp.name}在${args.date}安排「${shift.name}」` },
+    data: { id: schedule.id, message: `已为${emp.name}在${args.date}安排「${shift.code}」` },
   }
 }
 
@@ -120,34 +152,28 @@ async function execViewAttendance(args: Record<string, string>): Promise<ExecRes
   const [year, month] = args.month.split("-").map(Number)
   const from = `${year}-${String(month).padStart(2, "0")}-01`
   const lastDay = new Date(year, month, 0).getDate()
-  const to = `${year}-${String(month).padStart(2, "0")}-${lastDay}`
-  const where: Record<string, unknown> = { date: { gte: from, lte: to } }
+  const to = `${year}-${String(month).padStart(2, "0")}-${String(lastDay).padStart(2, "0")}`
 
+  let records: Awaited<ReturnType<typeof attendanceRepo.findAll>>
   if (args.employeeName) {
     const emp = await findEmployeeByName(args.employeeName)
     if (!emp) return { success: false, error: `找不到员工「${args.employeeName}」` }
-    where.employeeId = emp.id
-  }
-  if (args.teamName) {
+    records = await attendanceRepo.findAll({ from, to, employeeId: emp.id })
+  } else if (args.teamName) {
     const team = await findTeamByName(args.teamName)
     if (!team) return { success: false, error: `找不到班组「${args.teamName}」` }
-    const teamEmps = await prisma.employee.findMany({ where: { teamId: team.id }, select: { id: true } })
-    where.employeeId = { in: teamEmps.map((e: { id: string }) => e.id) }
+    records = await attendanceRepo.findAll({ from, to, teamId: team.id })
+  } else {
+    records = await attendanceRepo.findAll({ from, to })
   }
-
-  const records = await prisma.attendanceRecord.findMany({
-    where,
-    include: { employee: true },
-    orderBy: { date: "asc" },
-    take: 100,
-  })
-  type AR = typeof records[number]
+  records = records.slice(0, 100)
+  type AR = (typeof records)[number]
   const summary = {
     total: records.length,
     normal: records.filter((r: AR) => r.status === "normal").length,
     late: records.filter((r: AR) => r.status === "late").length,
     absent: records.filter((r: AR) => r.status === "absent").length,
-    earlyLeave: records.filter((r: AR) => r.status === "early_leave").length,
+    early: records.filter((r: AR) => r.status === "early").length,
   }
   return { success: true, data: { month: args.month, summary } }
 }

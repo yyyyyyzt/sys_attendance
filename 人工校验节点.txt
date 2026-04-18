@@ -1,0 +1,33 @@
+智能排班考勤 — 人工校验节点（当前迭代）
+=====================================
+
+一、环境
+  1. .env 中 DATABASE_URL 指向可写的 MySQL 8 库（utf8mb4）。
+  2. npm install
+
+二、数据库与样例数据
+  1. npm run db:sql              （执行 db/schema.sql + db/seed.sql；仅建表可 npm run db:sql -- schema）
+  2. 可选：npm run db:import      （清空业务表后从 example1.csv + example2.csv 全量导入）
+  3. 可选：npm run sample:mysql   （仅少量行样本，见 scripts/sample-import-mysql.ts）
+
+三、质量门禁（本地）
+  1. npx tsc --noEmit
+  2. npm run lint
+  3. npm run build
+
+四、接口与页面（浏览器 + DevTools）
+  1. npm run dev → 班次页：全局班次 code/name/工时。
+  2. 排班页：班次下拉为全库 Shift；保存后 DB 有对应 Schedule。
+  3. 请假：申请（类型、小时）→ 列表筛选含 cancelled → PATCH 撤销。
+  4. POST /api/import/schedules-matrix：上传矩阵 CSV（可选 shifts），核对返回统计与库内行数。
+  5. GET /api/leaves/gaps?from=...&to=...  （可不传 teamId，汇总全部班组）
+
+五、NL / SQL 对照
+  1. 打开 queries/nl-fixtures/README.txt
+  2. 在 MySQL 中执行各 .sql，与页面/API 结果抽样对比。
+
+六、已知边界
+  - 请假撤销不自动恢复排班状态（见 leaveService.cancel 注释）。
+  - executor 部分列表有 take 限制，与 SQL LIMIT 可能不一致属预期。
+
+校验通过后即可进入下一阶段需求。

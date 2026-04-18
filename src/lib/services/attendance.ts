@@ -54,7 +54,8 @@ export const attendanceService = {
 
     const map = new Map<string, EmployeeMonthlyStats>()
     for (const r of records) {
-      const emp = r.employee as { id: string; name: string; position: string; teamId: string }
+      if (!("employee" in r) || !r.employee) continue
+      const emp = r.employee
       let stats = map.get(emp.id)
       if (!stats) {
         stats = {

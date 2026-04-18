@@ -1,6 +1,4 @@
-import type { Prisma } from "@/generated/prisma/client"
-
-/** 将 Prisma Json 字段安全转为 string[] */
+/** 将 Json 字段安全转为 string[] */
 export function jsonToStringArray(value: unknown): string[] {
   if (Array.isArray(value)) {
     return value.filter((v): v is string => typeof v === "string")
@@ -8,7 +6,7 @@ export function jsonToStringArray(value: unknown): string[] {
   return []
 }
 
-/** 将 string[] 转为可写入 Prisma Json 字段的值 */
-export function stringArrayToJson(arr: string[]): Prisma.InputJsonValue {
-  return arr as Prisma.InputJsonValue
+/** 将 string[] 写入 MySQL JSON 列（配合 CAST(? AS JSON) 或 JSON_QUOTE） */
+export function stringArrayToJsonValue(arr: string[]): string {
+  return JSON.stringify(arr)
 }

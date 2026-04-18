@@ -3,11 +3,9 @@ import { apiRouteError } from "@/lib/api-route-error"
 import { shiftService } from "@/lib/services/shift"
 import { createShiftSchema } from "@/lib/validation/shift"
 
-export async function GET(request: Request) {
+export async function GET() {
   try {
-    const { searchParams } = new URL(request.url)
-    const teamId = searchParams.get("teamId") ?? undefined
-    const shifts = await shiftService.list(teamId)
+    const shifts = await shiftService.list()
     return NextResponse.json(shifts)
   } catch (err) {
     return apiRouteError("GET /api/shifts", err, "获取班次列表失败", 500)

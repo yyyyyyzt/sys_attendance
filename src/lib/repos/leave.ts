@@ -1,57 +1,139 @@
-import { prisma } from "@/lib/db"
-import { stringArrayToJson } from "@/lib/json-array"
+import { randomUUID } from "crypto"
+import { queryRows, queryOne, execute } from "@/lib/db"
+import { stringArrayToJsonValue } from "@/lib/json-array"
 import type { CreateLeaveInput, LeaveQuery } from "@/lib/validation/leave"
+import type { RowDataPacket } from "mysql2"
+
+type LeaveRow = RowDataPacket & {
+  id: string
+  employeeId: string
+  leaveType: string
+  startDate: string
+  endDate: string
+  hours: string | number
+  shiftIds: unknown
+  reason: string
+  status: string
+  approverId: string | null
+  cancelledAt: Date | null
+  createdAt: Date
+  updatedAt: Date
+  emp_id: string
+  emp_name: string
+  emp_position: string
+  emp_teamId: string
+}
+
+function mapLeave(r: LeaveRow) {
+  return {
+    id: r.id,
+    employeeId: r.employeeId,
+    leaveType: r.leaveType,
+    startDate: r.startDate,
+    endDate: r.endDate,
+    hours: r.hours,
+    shiftIds: r.shiftIds,
+    reason: r.reason,
+    status: r.status,
+    approverId: r.approverId,
+    cancelledAt: r.cancelledAt,
+    createdAt: r.createdAt,
+    updatedAt: r.updatedAt,
+    employee: {
+      id: r.emp_id,
+      name: r.emp_name,
+      position: r.emp_position,
+      teamId: r.emp_teamId,
+    },
+  }
+}
 
 export const leaveRepo = {
-  findAll(query: LeaveQuery) {
-    const where: Record<string, unknown> = {}
-    if (query.employeeId) where.employeeId = query.employeeId
-    if (query.status) where.status = query.status
-    if (query.from || query.to) {
-      where.startDate = {
-        ...(query.from ? { gte: query.from } : {}),
-        ...(query.to ? { lte: query.to } : {}),
-      }
+  async findAll(query: LeaveQuery) {
+    const cond: string[] = ["1=1"]
+    const params: unknown[] = []
+    if (query.employeeId) {
+      cond.push("lr.`employeeId` = ?")
+      params.push(query.employeeId)
     }
-    return prisma.leaveRequest.findMany({
-      where,
-      orderBy: { createdAt: "desc" },
-      include: {
-        employee: { select: { id: true, name: true, position: true, teamId: true } },
-      },
-    })
+    if (query.status) {
+      cond.push("lr.`status` = ?")
+      params.push(query.status)
+    }
+    if (query.from && query.to) {
+      cond.push("lr.`startDate` <= ? AND lr.`endDate` >= ?")
+      params.push(query.to, query.from)
+    } else if (query.from) {
+      cond.push("lr.`endDate` >= ?")
+      params.push(query.from)
+    } else if (query.to) {
+      cond.push("lr.`startDate` <= ?")
+      params.push(query.to)
+    }
+    const sql = `
+      SELECT lr.*, e.\`id\` AS emp_id, e.\`name\` AS emp_name, e.\`position\` AS emp_position, e.\`teamId\` AS emp_teamId
+      FROM \`LeaveRequest\` lr
+      INNER JOIN \`Employee\` e ON e.\`id\` = lr.\`employeeId\`
+      WHERE ${cond.join(" AND ")}
+      ORDER BY lr.\`createdAt\` DESC
+    `
+    const rows = await queryRows<LeaveRow>(sql, params)
+    return rows.map(mapLeave)
   },
 
-  findById(id: string) {
-    return prisma.leaveRequest.findUnique({
-      where: { id },
-      include: {
-        employee: { select: { id: true, name: true, position: true, teamId: true } },
-      },
-    })
+  async findById(id: string) {
+    const r = await queryOne<LeaveRow>(
+      `
+      SELECT lr.*, e.\`id\` AS emp_id, e.\`name\` AS emp_name, e.\`position\` AS emp_position, e.\`teamId\` AS emp_teamId
+      FROM \`LeaveRequest\` lr
+      INNER JOIN \`Employee\` e ON e.\`id\` = lr.\`employeeId\`
+      WHERE lr.\`id\` = ?
+      LIMIT 1
+    `,
+      [id],
+    )
+    return r ? mapLeave(r) : null
   },
 
-  create(data: CreateLeaveInput) {
-    return prisma.leaveRequest.create({
-      data: {
-        employeeId: data.employeeId,
-        startDate: data.startDate,
-        endDate: data.endDate,
-        shiftIds: stringArrayToJson(data.shiftIds),
-        reason: data.reason,
-        status: "pending",
-      },
-    })
+  async create(data: CreateLeaveInput) {
+    const id = randomUUID()
+    await execute(
+      `
+      INSERT INTO \`LeaveRequest\` (
+        \`id\`, \`employeeId\`, \`leaveType\`, \`startDate\`, \`endDate\`, \`hours\`, \`shiftIds\`, \`reason\`, \`status\`, \`approverId\`, \`cancelledAt\`, \`createdAt\`, \`updatedAt\`
+      ) VALUES (?, ?, ?, ?, ?, ?, CAST(? AS JSON), ?, 'pending', NULL, NULL, NOW(3), NOW(3))
+    `,
+      [
+        id,
+        data.employeeId,
+        data.leaveType,
+        data.startDate,
+        data.endDate,
+        String(data.hours),
+        stringArrayToJsonValue(data.shiftIds),
+        data.reason,
+      ],
+    )
+    return await this.findById(id)
   },
 
-  approve(id: string, status: "approved" | "rejected", approverId: string) {
-    return prisma.leaveRequest.update({
-      where: { id },
-      data: { status, approverId },
-    })
+  async approve(id: string, status: "approved" | "rejected", approverId: string) {
+    await execute(
+      "UPDATE `LeaveRequest` SET `status` = ?, `approverId` = ?, `cancelledAt` = NULL, `updatedAt` = NOW(3) WHERE `id` = ?",
+      [status, approverId, id],
+    )
+    return await this.findById(id)
+  },
+
+  async cancel(id: string) {
+    await execute(
+      "UPDATE `LeaveRequest` SET `status` = 'cancelled', `cancelledAt` = NOW(3), `updatedAt` = NOW(3) WHERE `id` = ?",
+      [id],
+    )
+    return await this.findById(id)
   },
 
   delete(id: string) {
-    return prisma.leaveRequest.delete({ where: { id } })
+    return execute("DELETE FROM `LeaveRequest` WHERE `id` = ?", [id])
   },
 }
