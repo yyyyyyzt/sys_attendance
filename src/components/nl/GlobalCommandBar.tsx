@@ -28,6 +28,10 @@ const ACTION_LABELS: Record<string, string> = {
   export_schedule: "导出排班",
   view_leave_gaps: "缺口预警",
   view_attendance_alerts: "出勤异常",
+  view_leave_panel: "员工假期面板",
+  view_team_day_leaves: "班组当日请假",
+  view_pending_leaves: "待审批队列",
+  view_team_day_attendance: "班组当日出勤",
 }
 
 export function GlobalCommandBar() {
