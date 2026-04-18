@@ -10,7 +10,8 @@
     "db:sql": "tsx --require dotenv/config scripts/apply-sql.ts",
     "db:import": "tsx --require dotenv/config scripts/import-matrix.ts",
     "db:seed": "tsx --require dotenv/config scripts/apply-sql.ts seed",
-    "sample:mysql": "tsx --require dotenv/config scripts/sample-import-mysql.ts"
+    "sample:mysql": "tsx --require dotenv/config scripts/sample-import-mysql.ts",
+    "test:api": "tsx --require dotenv/config scripts/api-tests.ts"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
