@@ -44,3 +44,13 @@
 - [ ] 历史数据统计分析
 - [ ] 数据备份与恢复
 - [ ] 用户权限管理
+
+## 阶段7.5: 班长 / 总经理业务流闭环（本轮优化，详见 docs/optimization-plan.md）
+- [ ] 默认出勤推导：`deriveDailyAttendance` + `monthlyStats` 回退分支
+- [ ] 假期规则引擎：消耗型扣减（年假/婚假/育儿假）+ 上限型校验（丧假/陪产假等）
+- [ ] `LeaveBalanceAccount` 仓储与初始化接口
+- [ ] 班长聚合接口：`/api/employees/:id/leave-panel`、`/api/leaves/day-overview`、`/api/leaves/pending`
+- [ ] NL 工具扩展：`view_leave_panel`、`view_team_day_leaves`、`view_pending_leaves`、`view_team_day_attendance`
+- [ ] `approve_leave` 支持 startDate 精确定位 + 多 pending 回问
+- [ ] 请假页员工假期面板 Drawer + 待审批徽标
+- [ ] 通过 `docs/nl-test-cases.md` 的全部测试用例 + 三件套门禁
