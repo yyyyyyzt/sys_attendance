@@ -19,7 +19,7 @@ export const createLeaveSchema = z.object({
 
 export const approveLeaveSchema = z.object({
   status: z.enum(["approved", "rejected"], { message: "状态只能是 approved 或 rejected" }),
-  approverId: z.string().min(1, "审批人不能为空"),
+  approverId: z.string().min(1).optional(),
 })
 
 export const cancelLeaveSchema = z.object({
