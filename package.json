@@ -11,7 +11,9 @@
     "db:import": "tsx --require dotenv/config scripts/import-matrix.ts",
     "db:seed": "tsx --require dotenv/config scripts/apply-sql.ts seed",
     "sample:mysql": "tsx --require dotenv/config scripts/sample-import-mysql.ts",
-    "test:api": "tsx --require dotenv/config scripts/api-tests.ts"
+    "test:api": "tsx --require dotenv/config scripts/api-tests.ts",
+    "init:admin": "tsx --require dotenv/config scripts/init-admin.ts",
+    "setup": "npm run db:sql && npm run init:admin"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",
