@@ -11,14 +11,12 @@ export async function proxy(req: NextRequest) {
   const { pathname, search, origin } = req.nextUrl
   const url = req.nextUrl.clone()
 
-  // 若 URL 中带了 ?t=xxx，尝试换成 cookie
+  // 若 URL 中带了 ?t=xxx，尝试换成 cookie（页面或其它路径 302 到换票端点）
+  // 已是 /api/auth/exchange 时不得再 302 到自身，否则会出现重定向死循环
   const tokenParam = url.searchParams.get("t")
-  if (tokenParam) {
-    // 这里不直接访问数据库（middleware 无法用 mysql2），改为 302 到专用端点
-    // /api/auth/exchange?t=xxx&next=/xxx
+  if (tokenParam && pathname !== "/api/auth/exchange") {
     const exchangeUrl = new URL("/api/auth/exchange", origin)
     exchangeUrl.searchParams.set("t", tokenParam)
-    // 去掉 ?t= 的原始目标
     url.searchParams.delete("t")
     exchangeUrl.searchParams.set("next", `${url.pathname}${url.search}`)
     return NextResponse.redirect(exchangeUrl)
