@@ -7,13 +7,10 @@
     "build": "next build",
     "start": "next start",
     "lint": "eslint",
-    "db:sql": "tsx --require dotenv/config scripts/apply-sql.ts",
-    "db:import": "tsx --require dotenv/config scripts/import-matrix.ts",
-    "db:seed": "tsx --require dotenv/config scripts/apply-sql.ts seed",
-    "sample:mysql": "tsx --require dotenv/config scripts/sample-import-mysql.ts",
+    "db:init": "tsx --require dotenv/config scripts/db-init.ts",
     "test:api": "tsx --require dotenv/config scripts/api-tests.ts",
     "init:admin": "tsx --require dotenv/config scripts/init-admin.ts",
-    "setup": "npm run db:sql && npm run init:admin"
+    "setup": "npm run db:init && npm run init:admin"
   },
   "dependencies": {
     "@base-ui/react": "^1.4.0",

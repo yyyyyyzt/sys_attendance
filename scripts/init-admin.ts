@@ -72,7 +72,7 @@ async function main() {
     try {
       await conn.execute("SELECT 1 FROM `AppUser` LIMIT 1")
     } catch {
-      console.error("✗ 找不到 AppUser 表，请先执行：npm run db:sql -- schema")
+      console.error("✗ 找不到 AppUser 表，请先执行：npm run db:init")
       process.exit(1)
     }
 

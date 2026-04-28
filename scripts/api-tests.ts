@@ -10,7 +10,7 @@
  *
  * 前置：
  * 1. 已运行 `npm run dev`，BASE_URL 默认 http://localhost:3000（可通过 BASE_URL 覆盖）。
- * 2. 已执行过 `npm run db:sql`（含 schema）且导入过基础数据（可选 example1.csv）。
+ * 2. 已执行过 `npm run db:init`，且具备种子数据或自行导入的排班数据。
  * 3. `.env` 有合法的 `DATABASE_URL` 与 `AUTH_SECRET`。
  *
  * 用法：

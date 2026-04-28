@@ -1,5 +1,5 @@
 -- 考勤排班库表结构（与应用程序 mysql2 访问层一致）
--- 用法：npm run db:sql -- schema   或   mysql ... < db/schema.sql
+-- 初始化：npm run db:init   或   mysql ... < db/schema.sql
 SET NAMES utf8mb4;
 
 CREATE TABLE `Department` (
